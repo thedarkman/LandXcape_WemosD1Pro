@@ -447,11 +447,11 @@ static void handleRoot(void){
           <br>\
           <form method='POST' action='/goHome'><button type='submit' class='big'>go Home</button></form>\
           <br>\
-          <form method='POST' action='/stats'><button type='submit'>Statistics</button></form>\
+          <form method='POST' action='/stats'><button type='submit'>Statistik</button></form>\
           <br>\
           <form method='POST' action='/configure'><button type='submit'>Administration</button></form>\
           <br>\
-          <form method='POST' action='/PWRButton'><button type='submit'>Power Robi off / on</button></form>\
+          <form method='POST' action='/PWRButton'><button type='submit'>Power Robi Aus / An</button></form>\
           <br>\
         </body>\
       </html>",hr, min % 60, sec % 60,
@@ -487,8 +487,8 @@ static void handleStartMowing(void){
     writeDebugMessageToInternalLog((String)"[handleStartMowing]Mowing started at local time:"+hour()+":"+minute()+":"+second()+" " + year());
   }
   if (showWebsite){
-    char temp[480];
-    snprintf(temp, 480,
+    char temp[500];
+    snprintf(temp, 500,
        "<html>\
         <head>\
           <title>LandXcape</title>\
@@ -500,7 +500,7 @@ static void handleStartMowing(void){
           <body>\
             <h1>LandXcape</h1>\
             <p></p>\
-            <p>Mowing started at local time: %02d:%02d:%02d</p>\
+            <p>Das M&auml;hen hat angefangen um: %02d:%02d:%02d</p>\
           </body>\
         </html>",
         hour(),minute(),second()
@@ -535,8 +535,8 @@ static void handleStopMowing(){
     writeDebugMessageToInternalLog((String)"[handleStopMowing]Mowing stoped at local time:"+hour()+":"+minute()+":"+second()+" " + year());
   }
   if(showWebsite){
-    char temp[450];
-    snprintf(temp, 450,
+    char temp[480];
+    snprintf(temp, 480,
      "<html>\
       <head>\
         <title>LandXcape</title>\
@@ -548,7 +548,7 @@ static void handleStopMowing(){
         <body>\
           <h1>LandXcape</h1>\
           <p></p>\
-          <p>Mowing stoped at local time: %02d:%02d:%02d</p>\
+          <p>Das M&auml;hen wurde gestoppt um: %02d:%02d:%02d</p>\
         </body>\
       </html>",
       hour(),minute(),second()
@@ -581,8 +581,8 @@ static void handleGoHome(){
     writeDebugMessageToInternalLog((String)"[handleGoHome]Robi sent home at local time:"+hour()+":"+minute()+":"+second()+" " + year());
   }
   if (showWebsite){
-  char temp[470];
-    snprintf(temp, 470,
+  char temp[490];
+    snprintf(temp, 490,
      "<html>\
       <head>\
         <title>LandXcape</title>\
@@ -594,7 +594,7 @@ static void handleGoHome(){
         <body>\
           <h1>LandXcape</h1>\
           <p></p>\
-          <p>Mowing stoped and sent back to base at local time: %02d:%02d:%02d</p>\
+          <p>Das M&auml;hen wurde gestoppt und R&uck;fahrt zur Basis gestartet um: %02d:%02d:%02d</p>\
         </body>\
       </html>",
       hour(),minute(),second()
@@ -665,30 +665,30 @@ static void showStatistics(void){
       robiOnTheWayHomeValue = false_;
     }
 
-    char rainStatus_ [] = "Not raining";
+    char rainStatus_ [] = "Kein Regen";
     char rainDelay_ [] ="20";
     char rainDelayText_ [37] = "";
     
     if(getRainSensorStatus()){
-      strncpy(rainStatus_, "raining...", sizeof(rainStatus_));
+      strncpy(rainStatus_, "es regnet...", sizeof(rainStatus_));
 
       itoa(rainingDelay_,rainDelay_,10);
-      strcat(rainDelayText_,"Waiting delay: ");
+      strcat(rainDelayText_,"Warteverz&ouml;gerung: ");
       strcat(rainDelayText_,rainDelay_);
-      strcat(rainDelayText_," minutes");
+      strcat(rainDelayText_," Minuten");
     }else{
       if (raining){ //show as long as the raining flag is active
-        strncpy(rainStatus_, "raining...", sizeof(rainStatus_));
+        strncpy(rainStatus_, "es regnet...", sizeof(rainStatus_));
         
         itoa(rainingDelay_,rainDelay_,10);
-        strcat(rainDelayText_,"Waiting delay after rain: ");
+        strcat(rainDelayText_,"Warteverz&ouml;gerung nach dem Regen: ");
         strcat(rainDelayText_,rainDelay_);
-        strcat(rainDelayText_," minutes");
+        strcat(rainDelayText_," Minuten");
       }
     }
         
-    char temp[1820];
-    snprintf(temp, 1820,
+    char temp[1890];
+    snprintf(temp, 1890,
      "<html>\
       <head>\
         <title>LandXcape Statistics</title>\
@@ -698,44 +698,45 @@ static void showStatistics(void){
         <meta http-equiv='Refresh' content='10; url=\\stats'>\
       </head>\
         <body>\
-          <h1>LandXcape Statistics</h1>\
+          <h1>LandXcape Statistik</h1>\
           <p></p>\
           <p>Uptime: %02d days %02d hour %02d min %02d sec</p>\
           <p>Time: %02d:%02d:%02d</p>\
           <p>Date: %02d.%02d.%02d</p>\
-          <p>Computed sunrise approx: %s</p>\
-          <p>Computed sunset approx: %s</p>\
-          <p>HasCharged/isCharging: %s/%s   (OnTheWay)Home: (%s)%s</p>\
-          <p>Weather status: %s %s</p>\
+          <p>Errechneter Sonnenaufgang ca.: %s</p>\
+          <p>Errechneter Sonnenuntergang ca.: %s</p>\
+          <p>HasCharged/isCharging: %s/%s</p>\
+          <p>(OnTheWay)Home: (%s)%s</p>\
+          <p>Wetter Status: %s %s</p>\
           <p>Version: %02lf</p>\
           <br>\
           <table style='width:450px'>\
             <tr>\
-              <th>Battery:</th>\
+              <th>Batterie:</th>\
             </tr>\
             <tr>\
-              <th>Actual voltage: %02lf</th>\
-              <th>Lowest voltage: %02lf</th>\
-              <th>Highest voltage: %02lf</th>\
+              <th>Aktuelle Spannung: %02lf</th>\
+              <th>Niedrigste Spannung: %02lf</th>\
+              <th>H&ouml;chste Spannung: %02lf</th>\
             </tr>\
             <tr>\
-              <th>Cell:</th>\
+              <th>Zelle:</th>\
               <th></th>\
               <th></th>\
             </tr>\
             <tr>\
-              <th>Actual voltage: %02lf</th>\
-              <th>Lowest voltage: %02lf</th>\
-              <th>Highest voltage: %02lf</th>\
+              <th>Aktuelle Spannung: %02lf</th>\
+              <th>Niedrigste Spannung: %02lf</th>\
+              <th>H&ouml;chste Spannung: %02lf</th>\
             </tr>\
           </table>\
           <p></p>\
-          <p><b>Battery history of the last %02dmin</b></p>\
+          <p><b>Batterie Historie der letzten %02d Minuten</b></p>\
           <img src=\"/BatGraph.svg\" />\
           <p></p>\
-          <p><b>Memory Information in bytes:</b></p>\
+          <p><b>Speicher Informationen in bytes:</b></p>\
           <p>Free Heap: %d - Fragmentation: %d - MaxFreeBlockSize: %d</p>\
-          <form method='POST' action='/'><button type='submit'>Back to main menu</button></form>\
+          <form method='POST' action='/'><button type='submit'>Zur&uuml;ck zur Startseite</button></form>\
         </body>\
       </html>",
       days,hr%24, min % 60, sec % 60,hour(),minute(),second(),day(),month(),year(),sunrise__,sunset__,hasChargedValue,isChargingValue,robiOnTheWayHomeValue,robiAtHomeValue,rainStatus_,rainDelayText_,
