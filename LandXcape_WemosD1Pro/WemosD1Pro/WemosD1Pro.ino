@@ -423,13 +423,15 @@ static void handleRoot(void){
   A0reading = A0reading / baseFor1V;
   batteryVoltage = A0reading * faktorBat;
   
-  snprintf(temp, 1250,
+  snprintf(temp, 1350,
      "<html>\
       <head>\
         <title>LandXcape</title>\
         <style>\
-          body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }\
+          body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color:#008}button{width:200px;height:48px;border-radius:12px;border:none;font-size:16px;background-color:#008CBA;color:white}.big{height:72px}\
         </style>\
+        <meta name='viewport' content='width=device-width, initial-scale=1.0'>\
+        <meta name='apple-mobile-web-app-capable' content='yes'>\
         <meta http-equiv='Refresh' content='10; url=\\'>\
       </head>\
         <body>\
@@ -439,11 +441,11 @@ static void handleRoot(void){
           <p>Version: %02lf</p>\
           <p>Battery Voltage: %02lf</p>\
           <br>\
-          <form method='POST' action='/start'><button type='submit'>Start</button></form>\
+          <form method='POST' action='/start'><button type='submit' class='big'>Start</button></form>\
           <br>\
-          <form method='POST' action='/stop'><button type='submit'>Stop</button></form>\
+          <form method='POST' action='/stop'><button type='submit' class='big'>Stop</button></form>\
           <br>\
-          <form method='POST' action='/goHome'><button type='submit'>go Home</button></form>\
+          <form method='POST' action='/goHome'><button type='submit' class='big'>go Home</button></form>\
           <br>\
           <form method='POST' action='/stats'><button type='submit'>Statistics</button></form>\
           <br>\
@@ -785,13 +787,15 @@ static void handleAdministration(void){
     } 
 
     char temp[2300];
-    snprintf(temp, 2300,
+    snprintf(temp, 2400,
      "<html>\
      <head>\
      <title>LandXcape</title>\
       <style>\
-        body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088;}\
+        body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color:#008}input[type=\"submit\"],button{width:200px;height:48px;border-radius:12px;border:none;font-size:16px;background-color:#008CBA;color:white}input[type=\"checkbox\"]{margin-left:5px;transform:scale(2)}\
       </style>\
+      <meta name='viewport' content='width=device-width, initial-scale=1.0'>\
+      <meta name='apple-mobile-web-app-capable' content='yes'>\
     </head>\
       <body>\
         <h1>LandXcape Administration Site</h1>\
