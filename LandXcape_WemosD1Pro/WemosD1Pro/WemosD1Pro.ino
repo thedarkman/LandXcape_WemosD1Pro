@@ -413,7 +413,7 @@ static void handleRoot(void){
     digitalWrite(LED_BUILTIN, LOW); //show connection via LED  
   }
   //preparation work
-  char temp[1250];
+  char temp[1500];
   int sec = millis() / 1000;
   int min = sec / 60;
   int hr = min / 60;
@@ -423,7 +423,7 @@ static void handleRoot(void){
   A0reading = A0reading / baseFor1V;
   batteryVoltage = A0reading * faktorBat;
   
-  snprintf(temp, 1350,
+  snprintf(temp, 1500,
      "<html>\
       <head>\
         <title>LandXcape</title>\
@@ -786,13 +786,13 @@ static void handleAdministration(void){
       strncpy(ignoreRainValue, "checked  ",sizeof(ignoreRainValue));
     } 
 
-    char temp[2300];
-    snprintf(temp, 2400,
+    char temp[2370];
+    snprintf(temp, 2370,
      "<html>\
      <head>\
      <title>LandXcape</title>\
       <style>\
-        body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color:#008}input[type=\"submit\"],button{width:200px;height:48px;border-radius:12px;border:none;font-size:16px;background-color:#008CBA;color:white}input[type=\"checkbox\"]{margin-left:5px;transform:scale(2)}\
+        body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color:#008}input[type='submit'],button{width:200px;height:48px;border-radius:12px;border:none;font-size:16px;background-color:#008CBA;color:white}input[type='checkbox']{margin-left:5px;transform:scale(2)}\
       </style>\
       <meta name='viewport' content='width=device-width, initial-scale=1.0'>\
       <meta name='apple-mobile-web-app-capable' content='yes'>\
