@@ -5,6 +5,7 @@
  * Allows to start, stop, send to base and furthermore to switch off and on the LandXcape lawn mower incl. activation with PIN
  * Furthmore supports Updates via WLAN via Web /updateLandXcape or via terminal -> curl -f "image=@firmware.bin" LandXcapeIPAddress/updateBin
  * 
+ * Requires Time library from https://github.com/PaulStoffregen/Time/
  */
 #include <FS.h>
 #include <TimeLib.h>
@@ -21,7 +22,7 @@ int debugMode = 1; //0 = off, 1 = moderate debug messages, 2 = all debug message
 boolean onBoardLED = true; //(de)activates the usage of the onboard LED
 
 boolean NTPUpdateSuccessful = false;
-double version = 0.64720; //changes: BugFix-Windows releated: Changed the arrangement of the includes to satisfy Windows compile errors ;) Thank you Rene :)
+double version = 0.64730; //changes: german version and frontend polish
 //rain sensor now alerts immediately
 
 int lastReadingSec=0;
@@ -412,8 +413,7 @@ static void handleRoot(void){
   if(onBoardLED){
     digitalWrite(LED_BUILTIN, LOW); //show connection via LED  
   }
-  //preparation work
-  char temp[1500];
+  //preparation work  
   int sec = millis() / 1000;
   int min = sec / 60;
   int hr = min / 60;
@@ -422,8 +422,9 @@ static void handleRoot(void){
   A0reading = analogRead(BATVOLT);
   A0reading = A0reading / baseFor1V;
   batteryVoltage = A0reading * faktorBat;
-  
-  snprintf(temp, 1500,
+
+  char temp[1520];
+  snprintf(temp, 1520,
      "<html>\
       <head>\
         <title>LandXcape</title>\
@@ -436,10 +437,10 @@ static void handleRoot(void){
       </head>\
         <body>\
           <h1>LandXcape</h1>\
-          <p>Uptime: %02d:%02d:%02d</p>\
-          <p>Local time: %02d:%02d:%02d</p>\
+          <p>Laufzeit: %02d:%02d:%02d</p>\
+          <p>Lokale Zeit: %02d:%02d:%02d</p>\
           <p>Version: %02lf</p>\
-          <p>Battery Voltage: %02lf</p>\
+          <p>Batterie Spannung: %02lf</p>\
           <br>\
           <form method='POST' action='/start'><button type='submit' class='big'>Start</button></form>\
           <br>\
@@ -687,22 +688,22 @@ static void showStatistics(void){
       }
     }
         
-    char temp[1890];
-    snprintf(temp, 1890,
+    char temp[1960];
+    snprintf(temp, 1960,
      "<html>\
       <head>\
         <title>LandXcape Statistics</title>\
         <style>\
-          body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }\
+          body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color:#000088;}button{width:200px;height:48px;border-radius:12px;border:none;font-size:16px;background-color:#008CBA;color:white}\
         </style>\
         <meta http-equiv='Refresh' content='10; url=\\stats'>\
       </head>\
         <body>\
           <h1>LandXcape Statistik</h1>\
           <p></p>\
-          <p>Uptime: %02d days %02d hour %02d min %02d sec</p>\
-          <p>Time: %02d:%02d:%02d</p>\
-          <p>Date: %02d.%02d.%02d</p>\
+          <p>Laufzeit: %02d Tage %02d Stunden %02d Minuten %02d Sekunden</p>\
+          <p>Zeit: %02d:%02d:%02d</p>\
+          <p>Datum: %02d.%02d.%02d</p>\
           <p>Errechneter Sonnenaufgang ca.: %s</p>\
           <p>Errechneter Sonnenuntergang ca.: %s</p>\
           <p>HasCharged/isCharging: %s/%s</p>\
@@ -787,8 +788,8 @@ static void handleAdministration(void){
       strncpy(ignoreRainValue, "checked  ",sizeof(ignoreRainValue));
     } 
 
-    char temp[2370];
-    snprintf(temp, 2370,
+    char temp[2680];
+    snprintf(temp, 2680,
      "<html>\
      <head>\
      <title>LandXcape</title>\
@@ -799,34 +800,34 @@ static void handleAdministration(void){
       <meta name='apple-mobile-web-app-capable' content='yes'>\
     </head>\
       <body>\
-        <h1>LandXcape Administration Site</h1>\
+        <h1>LandXcape Administrations Seite</h1>\
         <p></p>\
         <form method='POST' action='/newAdminConfiguration'>\
-        Battery history: Show <input type='number' name='batHistMinShown' value='%02d'  min=60 max=400> minutes<br>\
-        Activate function \"Go Home Early\" <input type='checkbox' name='goHomeEarly' %s ><br>\
-        If activated, send LandXcape home at: <input type='number' name='batVol' value='%02d' min=16 max=20> V <input type='number' name='batMiliVolt' value='%03d' min=000 max=999>mV<br>\
-        If not activated, this value is used to define the battery voltage <br> where no new round of mowing should be started before charging again.<br>\
+        Batterie Historie: Zeige <input type='number' name='batHistMinShown' value='%02d'  min=60 max=400> Minuten<br>\
+        Aktiviere die Funktion \"Go Home Early\" <input type='checkbox' name='goHomeEarly' %s ><br>\
+        Wenn aktiv, sende den LandXcape zur Basis bei: <input type='number' name='batVol' value='%02d' min=16 max=20> V <input type='number' name='batMiliVolt' value='%03d' min=000 max=999>mV<br>\
+        Wenn nicht aktiv, definiert dieser Wert die Batteriespannung bei der kein<br>neuer M&auml;hvorgang gestartet wird, ehe nicht geladen wurde<br>\
         <br>\
-        Activate function \"Mowing from sunrise to sunset\" <input type='checkbox' name='allDayMowing_' %s ><br>\
+        Aktiviere die Funktion \"Mowing from sunrise to sunset\" <input type='checkbox' name='allDayMowing_' %s ><br>\
         <br>\
-        Forward rain information to LandXcape to trigger original behavior <input type='checkbox' name='forwardRainInfo_' %s ><br>\
+        Reiche die Regensensor Daten an den LandXcape weiter um das orginal Verhalten zu erhalten<input type='checkbox' name='forwardRainInfo_' %s ><br>\
         <br>\
-        Ignore rain - just mow nevertheless if it rains or not <input type='checkbox' name='ignoreRain_' %s ><br>\
+        Ignoriere Regen - m&auml;he einfach immer, egal ob es regnet oder nicht <input type='checkbox' name='ignoreRain_' %s ><br>\
         <br>\
-        FileSystem Functions: <br>\
-        Format FileSystem <b>ATTENTION All persistent Data will be lost ATTENTION</b> <input type='checkbox' name='formatFlashStorage'><br>\
-        This must be done once before the filesystem can be used.<br>\
-        Will take about 60Seconds<br>\
+        Dateisystem Funktionen: <br>\
+        Formatiere das Dateisystem <b>ACHTUNG Alle gespeicherten Daten gehen verloren ACHTUNG</b> <input type='checkbox' name='formatFlashStorage'><br>\
+        Diese Funktion <b>muss</b> einmal ausgef&uuml;hrt werden um das Dateisystem nutzen zu k&ouml;nnen (Batterieverlauf Graph z.B.)<br>\
+        Dauer ca. 60 Sekunden<br>\
         <br>\
-        <input type='submit' value='Submit'></form>\
-        <form method='POST' action='/'><button type='submit'>Cancel</button></form>\
+        <input type='submit' value='Absenden'></form>\
+        <form method='POST' action='/'><button type='submit'>Abbrechen</button></form>\
         <p></p>\
         <br>\
         <table style='width:450px'>\
           <tr>\
             <th><form method='POST' action='/updateLandXcape'><button type='submit'>SW Update via WLAN</button></form></th>\
             <th><form method='POST' action='/resetWemos'><button type='submit'>Reset WEMOS board</button></form></th>\
-            <th><form method='POST' action='/logFiles'><button type='submit'>Show Log-Entries</button></form></th>\
+            <th><form method='POST' action='/logFiles'><button type='submit'>Zeige Log-Eintr&auml;ge</button></form></th>\
           </tr>\
         </table>\
       </body>\
