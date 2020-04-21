@@ -11,10 +11,11 @@
 #include <FS.h>
 #include <TimeLib.h>
 #include <ESP8266WiFi.h>
+#include <DNSServer.h>
 #include <ESP8266WebServer.h>
+#include <WiFiManager.h>         //https://github.com/tzapu/WiFiManager
 #include <WiFiUdp.h>
 
-//--- Attention: Configure settings in config.h first ---//
 boolean NTPUpdateSuccessful = false;
 
 int lastReadingSec=0;
@@ -123,28 +124,21 @@ void setup() {
   digitalWrite(LED_BUILTIN, HIGH); //LED off for now
 
   //WiFi Connection
-  if (debugMode>=1){
-    Serial.println((String)"[setup]"+connectTo + ssid);
-    writeDebugMessageToInternalLog((String)"[setup]"+connectTo + ssid);
-  }
-
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    if (debugMode>=1){
-      Serial.println((String)"[setup]"+"WiFi Status Code:"+WiFi.status());
-      writeDebugMessageToInternalLog((String)"[setup]"+"WiFi Status Code:"+WiFi.status());
-    }
+  WiFiManager wifiManager;
+  wifiManager.setTimeout(360);
+  if(!wifiManager.autoConnect("LandXcape")) {
+    Serial.println("[setup] failed to connect and hit timeout. Reset");
+    delay(3000);
+    ESP.reset();
+    delay(5000);
   }
   
   if (debugMode>=1){
-      Serial.println("[setup]");
-      Serial.println((String)"[setup]"+connectionEstablished + ssid);
-      writeDebugMessageToInternalLog((String)"[setup]"+connectionEstablished + ssid);
+      Serial.print("[setup]");
+      Serial.println((String)""+ connectionEstablished + WiFi.SSID());
+      writeDebugMessageToInternalLog((String)"[setup]"+ connectionEstablished + WiFi.SSID());
       Serial.println((String)"[setup]"+ipAddr + WiFi.localIP().toString());
-      writeDebugMessageToInternalLog((String)"[setup]"+ipAddr + WiFi.localIP().toString());
+      writeDebugMessageToInternalLog((String)"[setup]"+ ipAddr + WiFi.localIP().toString());
     }  
 
   //Activate and configure Web-Server
@@ -160,6 +154,7 @@ void setup() {
   wwwserver.on("/BatGraph.svg",drawGraphBasedOnBatValues);
   wwwserver.on("/newAdminConfiguration", HTTP_POST, computeNewAdminConfig);
   wwwserver.on("/resetWemos",resetWemosBoard);
+  wwwserver.on("/resetWiFi",resetWiFiManager);
   wwwserver.on("/logFiles",presentLogEntriesFromInternalLog);
 
   wwwserver.begin();
@@ -1417,6 +1412,37 @@ void resetWemosBoard(void){
   //unmount filesystem before rebooting
   SPIFFS.end(); //wait 200ms to ensure that the Filesystem has been unmounted
   delay(200);// and to allow the webserver to send the site before resetting ;)
+  ESP.restart();
+}
+
+static void resetWiFiManager(void) {
+  if (debugMode>=1){
+    Serial.println("[resetWiFiManager]WiFi Manager reset triggered ...");
+    writeDebugMessageToInternalLog("[resetWiFiManager]WiFi Manager reset triggered ...");
+  }
+
+   char temp[450];
+  snprintf(temp, 450,
+   "<html>\
+    <head>\
+      <title>LandXcape</title>\
+      <style>\
+        body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color: #000088;}\\
+      </style>\
+    </head>\
+      <body>\
+        <h1>LandXcape</h1>\
+        <p></p>\
+        <p>WiFi credentials are restted at: %02d:%02d:%02d</p>\
+      </body>\
+    </html>",
+    hour(),minute(),second()
+    );
+  wwwserver.send(200, "text/html", temp);
+
+  delay(200);// and to allow the webserver to send the site before resetting ;)
+  WiFiManager wifiManager;
+  wifiManager.resetSettings();
   ESP.restart();
 }
 

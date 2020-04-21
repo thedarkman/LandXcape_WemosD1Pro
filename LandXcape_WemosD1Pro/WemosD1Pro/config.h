@@ -1,9 +1,5 @@
-//---- WiFi credentials
-const char* ssid     = "Linux_2";
-const char* password = "linuxrulezz";
-
 //---- Version
-const double    version           = 0.64740;      // changes: config refactoring and cleanup
+const double    version           = 0.64750;      // changes: WiFiManager
 //---- Pin code
 const uint16_t  robiPinCode       = 1881;
 //---- Debugging settings
