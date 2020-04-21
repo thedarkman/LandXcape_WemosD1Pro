@@ -7,37 +7,27 @@
  * 
  * Requires Time library from https://github.com/PaulStoffregen/Time/
  */
+#include "config.h"
 #include <FS.h>
 #include <TimeLib.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <WiFiUdp.h>
 
-//variables
-const char* ssid     = "Linux_2";
-const char* password = "linuxrulezz";
-const int robiPinCode = 1881;
-int baudrate = 115200;
-int debugMode = 1; //0 = off, 1 = moderate debug messages, 2 = all debug messages
-boolean onBoardLED = true; //(de)activates the usage of the onboard LED
-
+//--- Attention: Configure settings in config.h first ---//
 boolean NTPUpdateSuccessful = false;
-double version = 0.64730; //changes: german version and frontend polish
-//rain sensor now alerts immediately
 
 int lastReadingSec=0;
 int lastReadingMin=0;
 
-int buttonPressTime = 600; //in ms
-int PWRButtonPressTime = 1900; // in ms
-int switchBetweenPinsDelay = 2500; // in ms
+short buttonPressTime = 600; //in ms
+short PWRButtonPressTime = 1900; // in ms
+short switchBetweenPinsDelay = 2500; // in ms
 
 double A0reading = 0;
 double A1reading = 0;
 double A2reading = 0;
 double batteryVoltage = 0;
-double baseFor1V = 329.9479166;
-double faktorBat = 9.322916;
 
 double lowestBatVoltage = 0;
 double highestBatVoltage = 0;
@@ -51,26 +41,22 @@ boolean robiAtHome = false;
 boolean robiOnTheWayHome = false;
 boolean isCharging = false;
 boolean hasCharged = false;
-int hasChargedDelay = 6; //stabilize charging detection
+byte hasChargedDelay = 6; //stabilize charging detection
 boolean raining = false;
-const int rainingDelay = 20; //in minutes delay after rain has been detected
 int rainingDelay_ = rainingDelay; //delay counter to subtract from
 
-int rainSensorShortcutTime = 10000; // 10sek shortcut the LandXcape Rain sensor cable with our relay since it only periodically checks for rain
+short rainSensorShortcutTime = 10000; // 10sek shortcut the LandXcape Rain sensor cable with our relay since it only periodically checks for rain
 boolean rainSensorResults[10]; //boolean array for the rain sensor checks and its past values
 int rainSensorCounter = 0;
 
 //admin variables
-int lastXXminBatHist = 100;
-const int maxBatHistValues = 400; // represents the max width of the statistic svg's
+short lastXXminBatHist = 100;
 boolean earlyGoHome = false;
 double earlyGoHomeVolt = 17.0;
 boolean forwardRainInfoToLandXcape = false;
 boolean ignoreRain = false;
 int dailyTasks = -1;
 boolean allDayMowing = false; //lawn mowing from sunrise to sunset
-const int maxLogEntries = 50;
-const int maxLogLength = 130;
 char logRotateBuffer [maxLogEntries][maxLogLength]; // 130*50*1byte je character = ~6.5kb (max) size
 int logRotateCounter = 0; 
 
@@ -494,7 +480,7 @@ static void handleStartMowing(void){
         <head>\
           <title>LandXcape</title>\
           <style>\
-            body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }\
+            body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color: #000088;}\\
           </style>\
           <meta http-equiv='Refresh' content='2; url=\\'>\
         </head>\
@@ -542,7 +528,7 @@ static void handleStopMowing(){
       <head>\
         <title>LandXcape</title>\
         <style>\
-          body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }\
+          body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color: #000088;}\\
         </style>\
         <meta http-equiv='Refresh' content='2; url=\\'>\
       </head>\
@@ -588,7 +574,7 @@ static void handleGoHome(){
       <head>\
         <title>LandXcape</title>\
         <style>\
-          body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }\
+          body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color: #000088;}\\
         </style>\
         <meta http-equiv='Refresh' content='2; url=\\'>\
       </head>\
@@ -879,7 +865,7 @@ static void computeNewAdminConfig(void){
       <head>\
         <title>LandXcape</title>\
         <style>\
-          body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }\
+          body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color: #000088;}\\
         </style>\
         <meta http-equiv='Refresh' content='3; url=\\'>\
       </head>\
@@ -962,7 +948,7 @@ static void handleSwitchOnOff(void){
     <head>\
       <title>LandXcape</title>\
       <style>\
-        body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }\
+        body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color: #000088;}\\
       </style>\
       <meta http-equiv='Refresh' content='4; url=\\'>\
     </head>\
@@ -1177,7 +1163,7 @@ static void handleWebUpdate(void){
     <head>\
       <title>LandXcape WebUpdate Site</title>\
       <style>\
-        body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }\
+        body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color: #000088;}\\
       </style>\
     </head>\
       <body>\
@@ -1260,7 +1246,7 @@ static void handleWebUpdateHelperFunction (void){
           <head>\
             <title>LandXcape</title>\
             <style>\
-              body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }\
+              body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color: #000088;}\\
             </style>\
             <meta http-equiv='Refresh' content='5; url=\\'>\
           </head>\
@@ -1414,7 +1400,7 @@ void resetWemosBoard(void){
     <head>\
       <title>LandXcape</title>\
       <style>\
-        body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }\
+        body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color: #000088;}\\
       </style>\
       <meta http-equiv='Refresh' content='2; url=\\'>\
     </head>\
@@ -1646,7 +1632,7 @@ static void presentLogEntriesFromInternalLog(void){
     <head>\
       <title>LandXcape - WEMOS - Debug Entries</title>\
       <style>\
-        body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }\
+        body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color: #000088;}button{width:200px;height:48px;border-radius:12px;border:none;font-size:16px;background-color:#008CBA;color:white}\
       </style>\
     </head>\
       <body>\
