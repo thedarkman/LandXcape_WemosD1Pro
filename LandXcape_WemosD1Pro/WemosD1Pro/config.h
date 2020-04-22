@@ -15,3 +15,6 @@ const int       rainingDelay      = 20;           // in minutes delay after rain
 const short     maxBatHistValues  = 400;          // represents the max width of the statistic svg's
 const short     maxLogEntries     = 50;
 const short     maxLogLength      = 130;
+//---- Static webpage elements
+const char      g_cssBody[]       = "body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color:#000088;}";
+const char      g_cssButton[]     = "button{width:200px;height:48px;border-radius:12px;border:none;font-size:16px;background-color:#008CBA;color:white}.big{height:72px}";

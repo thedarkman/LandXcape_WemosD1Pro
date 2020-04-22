@@ -8,6 +8,7 @@
  * Requires Time library from https://github.com/PaulStoffregen/Time/
  */
 #include "config.h"
+#include "texts.h"
 #include <FS.h>
 #include <TimeLib.h>
 #include <ESP8266WiFi.h>
@@ -404,19 +405,20 @@ static void handleRoot(void){
   A0reading = A0reading / baseFor1V;
   batteryVoltage = A0reading * faktorBat;
 
-  char temp[1520];
-  snprintf(temp, 1520,
+  char temp[1540];
+  snprintf(temp, 1540,
      "<html>\
       <head>\
         <title>LandXcape</title>\
         <style>\
-          body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color:#008}button{width:200px;height:48px;border-radius:12px;border:none;font-size:16px;background-color:#008CBA;color:white}.big{height:72px}\
+          %s%s\
         </style>\
         <meta name='viewport' content='width=device-width, initial-scale=1.0'>\
         <meta name='apple-mobile-web-app-capable' content='yes'>\
         <meta http-equiv='Refresh' content='10; url=\\'>\
       </head>\
         <body>\
+          <div style='width:80%%;text-align:center'>\
           <h1>LandXcape</h1>\
           <p>Laufzeit: %02d:%02d:%02d</p>\
           <p>Lokale Zeit: %02d:%02d:%02d</p>\
@@ -434,9 +436,10 @@ static void handleRoot(void){
           <form method='POST' action='/configure'><button type='submit'>Administration</button></form>\
           <br>\
           <form method='POST' action='/PWRButton'><button type='submit'>Power Robi Aus / An</button></form>\
+          </div>\
           <br>\
         </body>\
-      </html>",hr, min % 60, sec % 60,
+      </html>",g_cssBody, g_cssButton, hr, min % 60, sec % 60,
        hour(),minute(),second(),version,batteryVoltage
       );
   wwwserver.send(200, "text/html", temp);
@@ -475,7 +478,7 @@ static void handleStartMowing(void){
         <head>\
           <title>LandXcape</title>\
           <style>\
-            body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color: #000088;}\\
+            %s\
           </style>\
           <meta http-equiv='Refresh' content='2; url=\\'>\
         </head>\
@@ -485,7 +488,7 @@ static void handleStartMowing(void){
             <p>Das M&auml;hen hat angefangen um: %02d:%02d:%02d</p>\
           </body>\
         </html>",
-        hour(),minute(),second()
+        g_cssBody,hour(),minute(),second()
         );
     wwwserver.send(200, "text/html", temp);
   }
@@ -523,7 +526,7 @@ static void handleStopMowing(){
       <head>\
         <title>LandXcape</title>\
         <style>\
-          body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color: #000088;}\\
+          %s\
         </style>\
         <meta http-equiv='Refresh' content='2; url=\\'>\
       </head>\
@@ -532,8 +535,7 @@ static void handleStopMowing(){
           <p></p>\
           <p>Das M&auml;hen wurde gestoppt um: %02d:%02d:%02d</p>\
         </body>\
-      </html>",
-      hour(),minute(),second()
+      </html>", g_cssBody, hour(),minute(),second()
       );
     wwwserver.send(200, "text/html", temp);
   }
@@ -569,7 +571,7 @@ static void handleGoHome(){
       <head>\
         <title>LandXcape</title>\
         <style>\
-          body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color: #000088;}\\
+          %s\
         </style>\
         <meta http-equiv='Refresh' content='2; url=\\'>\
       </head>\
@@ -579,7 +581,7 @@ static void handleGoHome(){
           <p>Das M&auml;hen wurde gestoppt und R&uck;fahrt zur Basis gestartet um: %02d:%02d:%02d</p>\
         </body>\
       </html>",
-      hour(),minute(),second()
+      g_cssBody, hour(),minute(),second()
       );
     wwwserver.send(200, "text/html", temp);
   }
@@ -675,7 +677,7 @@ static void showStatistics(void){
       <head>\
         <title>LandXcape Statistics</title>\
         <style>\
-          body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color:#000088;}button{width:200px;height:48px;border-radius:12px;border:none;font-size:16px;background-color:#008CBA;color:white}\
+          %s%s\
         </style>\
         <meta http-equiv='Refresh' content='10; url=\\stats'>\
       </head>\
@@ -721,7 +723,7 @@ static void showStatistics(void){
           <form method='POST' action='/'><button type='submit'>Zur&uuml;ck zur Startseite</button></form>\
         </body>\
       </html>",
-      days,hr%24, min % 60, sec % 60,hour(),minute(),second(),day(),month(),year(),sunrise__,sunset__,hasChargedValue,isChargingValue,robiOnTheWayHomeValue,robiAtHomeValue,rainStatus_,rainDelayText_,
+      g_cssBody, g_cssButton, days,hr%24, min % 60, sec % 60,hour(),minute(),second(),day(),month(),year(),sunrise__,sunset__,hasChargedValue,isChargingValue,robiOnTheWayHomeValue,robiAtHomeValue,rainStatus_,rainDelayText_,
       version,batteryVoltage,lowestBatVoltage,highestBatVoltage,cellVoltage,lowestCellVoltage,highestCellVoltage,lastXXminBatHist,ESP.getFreeHeap(),ESP.getHeapFragmentation(),ESP.getMaxFreeBlockSize()
       );
 
@@ -775,7 +777,7 @@ static void handleAdministration(void){
      <head>\
      <title>LandXcape</title>\
       <style>\
-        body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color:#008}input[type='submit'],button{width:200px;height:48px;border-radius:12px;border:none;font-size:16px;background-color:#008CBA;color:white}input[type='checkbox']{margin-left:5px;transform:scale(2)}\
+        %sinput[type='submit'],%sinput[type='checkbox']{margin-left:5px;transform:scale(2)}\
       </style>\
       <meta name='viewport' content='width=device-width, initial-scale=1.0'>\
       <meta name='apple-mobile-web-app-capable' content='yes'>\
@@ -812,7 +814,7 @@ static void handleAdministration(void){
           </tr>\
         </table>\
       </body>\
-    </html>",lastXXminBatHist,earlyGoHomeCheckBoxValue,earlyGoHomeVolt_,earlyGoHome_mVolt_,allDayMowingCheckBoxValue,forwardRainInfoValue,ignoreRainValue
+    </html>",g_cssBody,g_cssButton,lastXXminBatHist,earlyGoHomeCheckBoxValue,earlyGoHomeVolt_,earlyGoHome_mVolt_,allDayMowingCheckBoxValue,forwardRainInfoValue,ignoreRainValue
       );
 
       wwwserver.send(200, "text/html", temp);        
@@ -860,7 +862,7 @@ static void computeNewAdminConfig(void){
       <head>\
         <title>LandXcape</title>\
         <style>\
-          body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color: #000088;}\\
+          %s\
         </style>\
         <meta http-equiv='Refresh' content='3; url=\\'>\
       </head>\
@@ -876,7 +878,7 @@ static void computeNewAdminConfig(void){
           <p>Flash Storage will be formated: %d</p>\
       </body>\
     </html>",
-    hour(),minute(),second(),lastXXminBatHist,earlyGoHome,earlyGoHomeVolt,forwardRainInfoToLandXcape,ignoreRain,allDayMowing,formatFlashStorage
+    g_cssBody,hour(),minute(),second(),lastXXminBatHist,earlyGoHome,earlyGoHomeVolt,forwardRainInfoToLandXcape,ignoreRain,allDayMowing,formatFlashStorage
     );
     wwwserver.send(200, "text/html", temp);
 
@@ -943,7 +945,7 @@ static void handleSwitchOnOff(void){
     <head>\
       <title>LandXcape</title>\
       <style>\
-        body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color: #000088;}\\
+        %s\\
       </style>\
       <meta http-equiv='Refresh' content='4; url=\\'>\
     </head>\
@@ -953,7 +955,7 @@ static void handleSwitchOnOff(void){
         <p>Robi switched off/on at local time: %02d:%02d:%02d</p>\
       </body>\
     </html>",
-    hour(),minute(),second()
+    g_cssBody, hour(),minute(),second()
     );
   wwwserver.send(200, "text/html", temp);
 
@@ -1158,7 +1160,7 @@ static void handleWebUpdate(void){
     <head>\
       <title>LandXcape WebUpdate Site</title>\
       <style>\
-        body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color: #000088;}\\
+        %s\
       </style>\
     </head>\
       <body>\
@@ -1169,7 +1171,7 @@ static void handleWebUpdate(void){
          <form method='POST' action='/'><button type='submit'>Cancel</button></form>\
       </body>\
     </html>",
-     hour(),minute(),second(),version
+     g_cssBody,hour(),minute(),second(),version
      );
           
   //present website 
@@ -1241,17 +1243,17 @@ static void handleWebUpdateHelperFunction (void){
           <head>\
             <title>LandXcape</title>\
             <style>\
-              body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color: #000088;}\\
+              %s\
             </style>\
             <meta http-equiv='Refresh' content='5; url=\\'>\
           </head>\
             <body>\
               <h1>LandXcape</h1>\
               <p></p>\
-              <p>Update successfull at Local time: %02d:%02d:%02d</p>\
+              <p>Update erfolgreich um: %02d:%02d:%02d</p>\
             </body>\
           </html>",
-          hour(),minute(),second()
+          g_cssBody, hour(),minute(),second()
           );
       wwwserver.send(200, "text/html", temp);
           
@@ -1370,7 +1372,7 @@ void computeGraphBasedOnBatValues(void) {
     counter++;
   }
   
-  batGraphFile.println("</g>\n</svg>\n");
+  batGraphFile.println("</g>\n</svg>");
   batGraphFile.close();
   if (debugMode>=2){
           Serial.println("[computeGraphBasedOnBatValues]computeGraphBasedOnBatValues has been finished and as file saved...");
@@ -1395,7 +1397,7 @@ void resetWemosBoard(void){
     <head>\
       <title>LandXcape</title>\
       <style>\
-        body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color: #000088;}\\
+        %s\
       </style>\
       <meta http-equiv='Refresh' content='2; url=\\'>\
     </head>\
@@ -1405,7 +1407,7 @@ void resetWemosBoard(void){
         <p>Software reset triggered. Reseting... at Time: %02d:%02d:%02d</p>\
       </body>\
     </html>",
-    hour(),minute(),second()
+    g_cssBody,hour(),minute(),second()
     );
   wwwserver.send(200, "text/html", temp);
 
@@ -1427,16 +1429,16 @@ static void resetWiFiManager(void) {
     <head>\
       <title>LandXcape</title>\
       <style>\
-        body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color: #000088;}\\
+        %s\
       </style>\
     </head>\
       <body>\
         <h1>LandXcape</h1>\
         <p></p>\
-        <p>WiFi credentials are restted at: %02d:%02d:%02d</p>\
+        <p>WiFi credentials are reset at: %02d:%02d:%02d</p>\
       </body>\
     </html>",
-    hour(),minute(),second()
+    g_cssBody,hour(),minute(),second()
     );
   wwwserver.send(200, "text/html", temp);
 
@@ -1653,13 +1655,13 @@ static void presentLogEntriesFromInternalLog(void){
 
   int counter = ((logRotateCounter+1)%maxLogEntries); //to get the latest entry
 
-  String tmp = 
-    "<html>\
+  String tmp = "<html>\
     <head>\
       <title>LandXcape - WEMOS - Debug Entries</title>\
-      <style>\
-        body{background-color:#ccc;font-family:Arial,Helvetica,Sans-Serif;Color: #000088;}button{width:200px;height:48px;border-radius:12px;border:none;font-size:16px;background-color:#008CBA;color:white}\
-      </style>\
+      <style>";
+  tmp += g_cssBody;
+  tmp += g_cssButton;
+  tmp += tmp + "</style>\
     </head>\
       <body>\
         <h1>LandXcape - WEMOS - Debug Entries</h1>\
@@ -1677,7 +1679,7 @@ static void presentLogEntriesFromInternalLog(void){
         counter = (counter+1)%maxLogEntries;
       }
                     
-      tmp = tmp + "</body></html>";
+      tmp += "</body></html>";
       
   wwwserver.send(200, "text/html", tmp);
   
