@@ -1,14 +1,17 @@
 /*
  * Wemos D1 Pro Sketch
- * 
- * Connects to a static WLAN configuration 
+ *
+ * Connects to a static WLAN configuration
  * Allows to start, stop, send to base and furthermore to switch off and on the LandXcape lawn mower incl. activation with PIN
  * Furthmore supports Updates via WLAN via Web /updateLandXcape or via terminal -> curl -f "image=@firmware.bin" LandXcapeIPAddress/updateBin
- * 
+ *
  * Requires Time library from https://github.com/PaulStoffregen/Time/
  */
 #include "config.h"
 #include "texts.h"
+#ifdef TEST_DATA
+#include "test_data.h"
+#endif
 #include <FS.h>
 #include <TimeLib.h>
 #include <ESP8266WiFi.h>
@@ -19,12 +22,8 @@
 
 boolean NTPUpdateSuccessful = false;
 
-int lastReadingSec=0;
-int lastReadingMin=0;
-
-short buttonPressTime = 600; //in ms
-short PWRButtonPressTime = 1900; // in ms
-short switchBetweenPinsDelay = 2500; // in ms
+int lastReadingSec = 0;
+int lastReadingMin = 0;
 
 double A0reading = 0;
 double A1reading = 0;
@@ -36,7 +35,8 @@ double highestBatVoltage = 0;
 double lowestCellVoltage = 0;
 double highestCellVoltage = 0;
 
-double batterVoltageHistory [400];
+
+double batterVoltageHistory [maxBatHistValues];
 int batVoltHistCounter = 0;
 
 boolean robiAtHome = false;
@@ -60,7 +60,7 @@ boolean ignoreRain = false;
 int dailyTasks = -1;
 boolean allDayMowing = false; //lawn mowing from sunrise to sunset
 char logRotateBuffer [maxLogEntries][maxLogLength]; // 130*50*1byte je character = ~6.5kb (max) size
-int logRotateCounter = 0; 
+int logRotateCounter = 0;
 
 int STOP = D1;
 int START = D3;
@@ -78,7 +78,7 @@ char false_[] = "false";
 boolean showWebsite = true;
 
 //Debug messages
-char connectTo []= "Connection to ";
+char connectTo [] = "Connection to ";
 char connectionEstablished [] = "WiFi connected: ";
 char ipAddr [] = "IP Address: ";
 
@@ -112,35 +112,35 @@ void setup() {
   SPIFFS.begin();
 
   //initialize rainSensorResults buffer
-  for(int i=0; i<10;i++){
-    rainSensorResults[i]=true;
+  for (int i = 0; i < 10; i++) {
+    rainSensorResults[i] = true;
   }
 
-  if (debugMode>=1){
+  if (debugMode >= 1) {
     Serial.begin(baudrate);
-    delay(10);   
+    delay(10);
   }
- 
-  pinMode(LED_BUILTIN,OUTPUT);
+
+  pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH); //LED off for now
 
   //WiFi Connection
   WiFiManager wifiManager;
   wifiManager.setTimeout(360);
-  if(!wifiManager.autoConnect("LandXcape")) {
-    Serial.println("[setup] failed to connect and hit timeout. Reset");
+  if (!wifiManager.autoConnect("LandXcape")) {
+    Serial.println(F("[setup] failed to connect and hit timeout. Reset"));
     delay(3000);
     ESP.reset();
     delay(5000);
   }
-  
-  if (debugMode>=1){
-      Serial.print("[setup]");
-      Serial.println((String)""+ connectionEstablished + WiFi.SSID());
-      writeDebugMessageToInternalLog((String)"[setup]"+ connectionEstablished + WiFi.SSID());
-      Serial.println((String)"[setup]"+ipAddr + WiFi.localIP().toString());
-      writeDebugMessageToInternalLog((String)"[setup]"+ ipAddr + WiFi.localIP().toString());
-    }  
+
+  if (debugMode >= 1) {
+    Serial.print(F("[setup]"));
+    Serial.println((String)"" + connectionEstablished + WiFi.SSID());
+    writeDebugMessageToInternalLog((String)"[setup]" + connectionEstablished + WiFi.SSID());
+    Serial.println((String)"[setup]" + ipAddr + WiFi.localIP().toString());
+    writeDebugMessageToInternalLog((String)"[setup]" + ipAddr + WiFi.localIP().toString());
+  }
 
   //Activate and configure Web-Server
   wwwserver.on("/", handleRoot);
@@ -149,68 +149,88 @@ void setup() {
   wwwserver.on("/start", handleStartMowing);
   wwwserver.on("/stop", handleStopMowing);
   wwwserver.on("/goHome", handleGoHome);
-  wwwserver.on("/stats",showStatistics);
+  wwwserver.on("/stats", showStatistics);
   wwwserver.on("/configure", handleAdministration);
   wwwserver.on("/PWRButton", handleSwitchOnOff);
-  wwwserver.on("/BatGraph.svg",drawGraphBasedOnBatValues);
+  wwwserver.on("/BatGraph.svg", drawGraphBasedOnBatValues);
   wwwserver.on("/newAdminConfiguration", HTTP_POST, computeNewAdminConfig);
-  wwwserver.on("/resetWemos",resetWemosBoard);
-  wwwserver.on("/resetWiFi",resetWiFiManager);
-  wwwserver.on("/logFiles",presentLogEntriesFromInternalLog);
+  wwwserver.on("/resetWemos", resetWemosBoard);
+  wwwserver.on("/resetWiFi", resetWiFiManager);
+  wwwserver.on("/logFiles", presentLogEntriesFromInternalLog);
 
   wwwserver.begin();
-  if (debugMode>=1){
-    Serial.println("[setup]HTTP server started");
+  if (debugMode >= 2) {
+    Serial.println(F("[setup]HTTP server started"));
     writeDebugMessageToInternalLog((String)"[setup]HTTP server started");
   }
   NTPUpdateSuccessful = syncTimeViaNTP();
 
   //initialize Digital Pins
-  pinMode(STOP,OUTPUT); //Stop Button
-  pinMode(START,OUTPUT); //Start Button
-  pinMode(HOME,OUTPUT); //Home Button
-  pinMode(OKAY,OUTPUT); //OK Button
-  pinMode(BATVOLT,INPUT); //Battery Voltage sensing via Analog Input
-  pinMode(PWR,OUTPUT);
-  pinMode(REGENSENSOR_LXC,OUTPUT);
-  pinMode(REGENSENSOR_WEMOS,INPUT); // will be switched on every 10 seconds
-  digitalWrite(STOP,HIGH);
-  digitalWrite(START,HIGH);
-  digitalWrite(HOME,HIGH);
-  digitalWrite(OKAY,HIGH);
-  digitalWrite(PWR,HIGH);
-  digitalWrite(REGENSENSOR_LXC,HIGH);
+  pinMode(STOP, OUTPUT); //Stop Button
+  pinMode(START, OUTPUT); //Start Button
+  pinMode(HOME, OUTPUT); //Home Button
+  pinMode(OKAY, OUTPUT); //OK Button
+  pinMode(BATVOLT, INPUT); //Battery Voltage sensing via Analog Input
+  pinMode(PWR, OUTPUT);
+  pinMode(REGENSENSOR_LXC, OUTPUT);
+  pinMode(REGENSENSOR_WEMOS, INPUT); // will be switched on every 10 seconds
+  digitalWrite(STOP, HIGH);
+  digitalWrite(START, HIGH);
+  digitalWrite(HOME, HIGH);
+  digitalWrite(OKAY, HIGH);
+  digitalWrite(PWR, HIGH);
+  digitalWrite(REGENSENSOR_LXC, HIGH);
 
+#ifdef TEST_DATA
+  int cnt = sizeof(g_batSimValues) / sizeof(double);
+  Serial.print(F("filling battery values with "));
+  Serial.print(cnt);
+  Serial.println(F(" test values ..."));
+  for (int i = 0; i < cnt; i++) {
+    batterVoltageHistory[i] = g_batSimValues[i];
+    if (lowestBatVoltage == 0 || g_batSimValues[i] < lowestBatVoltage) {
+      lowestBatVoltage = g_batSimValues[i];
+      lowestCellVoltage = lowestBatVoltage / 5;
+    }
+    if (highestBatVoltage == 0 || g_batSimValues[i] > highestBatVoltage) {
+      highestBatVoltage = g_batSimValues[i];
+      highestCellVoltage = highestBatVoltage / 5;
+    }
+  }
+  batteryVoltage =  batterVoltageHistory[cnt - 1];
+  Serial.println(F("... done"));
+  batVoltHistCounter = cnt;
+#else
   //prepare / init statistics
   //create average of 3 readings to minimize jumping / noise
   A0reading = analogRead(BATVOLT);
   A1reading = analogRead(BATVOLT);
   A2reading = analogRead(BATVOLT);
-  A0reading = (A0reading+A1reading+A2reading)/3;
-  
-  A0reading = A0reading / baseFor1V;
-  batteryVoltage = A0reading * faktorBat;
+  A0reading = (A0reading + A1reading + A2reading) / 3;
+
+  batteryVoltage = A0reading * batteryVoltFactor;
 
   lowestBatVoltage = batteryVoltage;
   highestBatVoltage = batteryVoltage;
-  lowestCellVoltage = batteryVoltage/5;
-  highestCellVoltage = batteryVoltage/5;
+  lowestCellVoltage = batteryVoltage / 5;
+  highestCellVoltage = batteryVoltage / 5;
 
   //initialize SVG Graphics array with just now values
-  for (int i=0;i<maxBatHistValues;i++){
+  for (int i = 0; i < maxBatHistValues; i++) {
     storeBatVoltHistory(batteryVoltage);
   }
-  
+#endif
+
   computeGraphBasedOnBatValues();
-  
+
   dailyTasks = day(); //store the current day for the daily tasks
 
   changeUTCtoLocalTime();//change time to local time
   computeSunriseSunsetInformation(); //compute the new sunrise and sunset for today
-  
-    
-  if (debugMode>=1){
-    Serial.println("[setup]finished...");
+
+
+  if (debugMode >= 1) {
+    Serial.println(F("[setup]finished..."));
     writeDebugMessageToInternalLog((String)"[setup]finished...");
   }
 }
@@ -218,196 +238,201 @@ void setup() {
 void loop() {
 
   //Webserver section
-  wwwserver.handleClient(); 
+  wwwserver.handleClient();
 
-  if (NTPUpdateSuccessful==false){ //if syncing has failed do the doItOnceADay jobs again as well
+  if (NTPUpdateSuccessful == false) { //if syncing has failed do the doItOnceADay jobs again as well
     NTPUpdateSuccessful = syncTimeViaNTP();
     changeUTCtoLocalTime();//change time to local time
     computeSunriseSunsetInformation(); //compute the new sunrise and sunset for today
   }
 
   //update statistics every second
-  if (lastReadingSec!=second()){
+  if (lastReadingSec != second()) {
 
     //since the digital input are producing a lot of noise from the detector board we reduce the readings to every 10 seconds like on the LandXcape board as well and switch the digital input offline in the mean time
-    if (second()%10==5){ //read every 5th second -> :05,:15,:25...
-        delay(100);
-        rainSensorCounter = rainSensorCounter%10;
-        rainSensorResults[rainSensorCounter] = digitalRead(REGENSENSOR_WEMOS);
-        rainSensorCounter++;
+    if (second() % 10 == 5) { //read every 5th second -> :05,:15,:25...
+      delay(100);
+      rainSensorCounter = rainSensorCounter % 10;
+      rainSensorResults[rainSensorCounter] = digitalRead(REGENSENSOR_WEMOS);
+      rainSensorCounter++;
     }
 
-    double oldBatValue = batteryVoltage; //old value saved
-    //create average of 3 readings to minimize jumping / noise
-    A0reading = analogRead(BATVOLT);
-    A1reading = analogRead(BATVOLT);
-    A2reading = analogRead(BATVOLT);
-    A0reading = (A0reading+A1reading+A2reading)/3;
-    
-    A0reading = A0reading / baseFor1V;
-    batteryVoltage = A0reading * faktorBat;
-    
+#ifndef TEST_DATA
+    if (second() % 5 == 0) { //read every 5th second -> :05,:15,:25...
+      double oldBatValue = batteryVoltage; //old value saved
+      //create average of 3 readings to minimize jumping / noise
+      A0reading = analogRead(BATVOLT);
+      A1reading = analogRead(BATVOLT);
+      A2reading = analogRead(BATVOLT);
+      A0reading = (A0reading + A1reading + A2reading) / 3;
+
+      batteryVoltage = A0reading * batteryVoltFactor;
+
       if (oldBatValue != batteryVoltage) { //compute only if the reading has changed
-        if (batteryVoltage > highestBatVoltage){
+        if (batteryVoltage > highestBatVoltage) {
           highestBatVoltage = batteryVoltage;
-          highestCellVoltage = batteryVoltage/5;
+          highestCellVoltage = batteryVoltage / 5;
         }
-        if (batteryVoltage < lowestBatVoltage){
+        if (batteryVoltage < lowestBatVoltage) {
           lowestBatVoltage = batteryVoltage;
-          lowestCellVoltage = batteryVoltage/5;
+          lowestCellVoltage = batteryVoltage / 5;
+        }
+      }
+    }
+#endif
+
+    //every minute jobs
+    if (lastReadingMin != minute()) {
+      //store battery values every minute
+      storeBatVoltHistory(batteryVoltage);
+#ifndef TEST_DATA
+      computeGraphBasedOnBatValues();
+#endif
+
+      //check if we are charging, charging is needed or if we are done with charging ;)
+      checkBatValues();
+
+      //check is "Mowing from Sunrise to Sunset is activated and if yes trigger mowing if we are not charging and we are at home
+      if (allDayMowing == true && robiAtHome == true && hasCharged == true && isCharging == false) {
+
+        //check if the sun is up ;)
+        int currentTimeInMin = hour() * 60 + minute();
+
+        if (sunrise <= currentTimeInMin && sunset >= currentTimeInMin) { //activate function only while the sun is up and running ;)
+
+          if (robiAtHome == true && isCharging == false && hasCharged == true && raining == false) { //Charging finished, battery voltage drops again since no higher charging voltage is present
+            if (debugMode >= 1) {
+              Serial.println((String)"[loop]Mowing from Sunrise to Sunset - start next round at local time:" + hour() + ":" + minute() + ":" + second());
+              writeDebugMessageToInternalLog((String)"[loop]Mowing from Sunrise to Sunset - start next round at local time:" + hour() + ":" + minute() + ":" + second());
+            }
+            showWebsite = false;
+            handleStartMowing(); //start mowing; boolean variables will be set within this function
+            showWebsite = true;
+          }
+
+        } else {
+          if (debugMode >= 2) {
+            Serial.println((String)"[loop]Sunrise to Sunset mowing deactived because sunrise>=currentTimeInMin <=sunset" + sunrise + "<=" + currentTimeInMin + "sunset>=" + sunset);
+            writeDebugMessageToInternalLog((String)"[loop]Sunrise to Sunset mowing deactived because sunrise>=currentTimeInMin <=sunset" + sunrise + "<=" + currentTimeInMin + "sunset>=" + sunset);
+          }
+        }
+      }
+      //check if it is time to bring robi home if allDayMowing is active only!
+      int currentTimeInMin = hour() * 60 + minute();
+
+      if (allDayMowing == true && robiAtHome == false && robiOnTheWayHome == false && (currentTimeInMin > sunset || currentTimeInMin < sunrise)) {
+
+        showWebsite = false;
+        handleStopMowing();
+        handleGoHome();
+        showWebsite = true;
+
+        if (debugMode >= 1) {
+          Serial.println((String)"[loop]Sunset detected and allDayMowing active... Sending Robi home to base...");
+          writeDebugMessageToInternalLog((String)"[loop]Sunset detected and allDayMowing active... Sending Robi home to base...");
         }
       }
 
-      //every minute jobs
-      if (lastReadingMin!=minute()){
-        //store battery values every minute
-        storeBatVoltHistory(batteryVoltage);
-        computeGraphBasedOnBatValues();
+      //check for rain
+      if (getRainSensorStatus()) { //if true then rain has been detected -> send robi home
 
-        //check if we are charging, charging is needed or if we are done with charging ;)
-        checkBatValues();
-
-        //check is "Mowing from Sunrise to Sunset is activated and if yes trigger mowing if we are not charging and we are at home
-        if(allDayMowing==true && robiAtHome==true && hasCharged == true && isCharging==false){
-
-          //check if the sun is up ;)
-          int currentTimeInMin = hour()*60+minute();
-
-          if(sunrise<=currentTimeInMin && sunset >=currentTimeInMin){ //activate function only while the sun is up and running ;)
-
-              if(robiAtHome==true && isCharging==false && hasCharged == true && raining == false){ //Charging finished, battery voltage drops again since no higher charging voltage is present
-                  if (debugMode>=1){
-                    Serial.println((String)"[loop]Mowing from Sunrise to Sunset - start next round at local time:"+hour()+":"+minute()+":"+second());
-                    writeDebugMessageToInternalLog((String)"[loop]Mowing from Sunrise to Sunset - start next round at local time:"+hour()+":"+minute()+":"+second());
-                  } 
-                  showWebsite=false;
-                  handleStartMowing(); //start mowing; boolean variables will be set within this function
-                  showWebsite=true;
-              }
-       
-          }else{
-            if (debugMode>=2){
-                    Serial.println((String)"[loop]Sunrise to Sunset mowing deactived because sunrise>=currentTimeInMin <=sunset"+sunrise+"<="+currentTimeInMin+"sunset>="+sunset);
-                    writeDebugMessageToInternalLog((String)"[loop]Sunrise to Sunset mowing deactived because sunrise>=currentTimeInMin <=sunset"+sunrise+"<="+currentTimeInMin+"sunset>="+sunset);
-            }
+        if (robiOnTheWayHome == false && robiAtHome == false) { //-> send robi home if not already on the way or at home
+          if (debugMode >= 1) {
+            Serial.println((String)"[loop]Rain has been detected. Sending Robi home to base...");
+            writeDebugMessageToInternalLog((String)"[loop]Rain has been detected. Sending Robi home to base...");
           }
-        }  
-        //check if it is time to bring robi home if allDayMowing is active only!
-        int currentTimeInMin = hour()*60+minute();
-        
-        if (allDayMowing==true && robiAtHome==false && robiOnTheWayHome == false && (currentTimeInMin > sunset || currentTimeInMin < sunrise)){ 
-          
-          showWebsite=false;
-          handleStopMowing();
-          handleGoHome();
-          showWebsite=true;
-
-          if (debugMode>=1){
-                    Serial.println((String)"[loop]Sunset detected and allDayMowing active... Sending Robi home to base...");
-                    writeDebugMessageToInternalLog((String)"[loop]Sunset detected and allDayMowing active... Sending Robi home to base...");
-            }
+          showWebsite = false;
+          handleStopMowing(); //stop mowing to allow to send robi home
+          handleGoHome(); //send Robi home
+          showWebsite = true;
         }
-        
-        //check for rain
-        if (getRainSensorStatus()){ //if true then rain has been detected -> send robi home
-            
-            if(robiOnTheWayHome == false && robiAtHome == false){ //-> send robi home if not already on the way or at home
-              if (debugMode>=1){
-                      Serial.println((String)"[loop]Rain has been detected. Sending Robi home to base...");
-                      writeDebugMessageToInternalLog((String)"[loop]Rain has been detected. Sending Robi home to base...");
-              }
-               showWebsite=false;
-               handleStopMowing(); //stop mowing to allow to send robi home
-               handleGoHome(); //send Robi home
-               showWebsite=true;
-            }           
-              if (debugMode>=1 && raining == false){ //show rain detection within log file
-                      Serial.println((String)"[loop]Rain detected at:"+hour()+":"+minute()+":"+second());
-                      writeDebugMessageToInternalLog((String)"[loop]Rain detected at:"+hour()+":"+minute()+":"+second());
-              }
-             raining = true;
-             rainingDelay_ = rainingDelay;
+        if (debugMode >= 1 && raining == false) { //show rain detection within log file
+          Serial.println((String)"[loop]Rain detected at:" + hour() + ":" + minute() + ":" + second());
+          writeDebugMessageToInternalLog((String)"[loop]Rain detected at:" + hour() + ":" + minute() + ":" + second());
+        }
+        raining = true;
+        rainingDelay_ = rainingDelay;
 
-            if (forwardRainInfoToLandXcape==true){ //forward raining information to LandXcape as wished
-               reportRainToLandXCape();
-               if (debugMode>=1){
-                      Serial.println("[loop]Raining information has been forwarded to LandXcape as selected.");
-                      writeDebugMessageToInternalLog("[loop]Raining information has been forwarded to LandXcape as selected.");
-               }
-            }
-             
-        }else{
-          // check if need to update the raining variable
-          if (raining == true && getRainSensorStatus()==false){
-            rainingDelay_--; //subtracts 1 every minute
-            if (rainingDelay_<=0){
-              
-              if (debugMode>=1 && raining == true){ //show rain gone detection within log file
-                      Serial.println((String)"[loop]Rain gone - "+rainingDelay+"min delay has passed without rain at:"+hour()+":"+minute()+":"+second());
-                      writeDebugMessageToInternalLog((String)"[loop]Rain gone - "+rainingDelay+"min delay has passed without rain at:"+hour()+":"+minute()+":"+second());
-              }
-              
-              rainingDelay_=rainingDelay; //reset value
-              raining = false; //Raining delay time has passed. Switch raining variable to false
-            }
+        if (forwardRainInfoToLandXcape == true) { //forward raining information to LandXcape as wished
+          reportRainToLandXCape();
+          if (debugMode >= 1) {
+            Serial.println(F("[loop]Raining information has been forwarded to LandXcape as selected."));
+            writeDebugMessageToInternalLog("[loop]Raining information has been forwarded to LandXcape as selected.");
           }
         }
-        lastReadingMin = minute();
+      } else {
+        // check if need to update the raining variable
+        if (raining == true && getRainSensorStatus() == false) {
+          rainingDelay_--; //subtracts 1 every minute
+          if (rainingDelay_ <= 0) {
+
+            if (debugMode >= 1 && raining == true) { //show rain gone detection within log file
+              Serial.println((String)"[loop]Rain gone - " + rainingDelay + "min delay has passed without rain at:" + hour() + ":" + minute() + ":" + second());
+              writeDebugMessageToInternalLog((String)"[loop]Rain gone - " + rainingDelay + "min delay has passed without rain at:" + hour() + ":" + minute() + ":" + second());
+            }
+
+            rainingDelay_ = rainingDelay; //reset value
+            raining = false; //Raining delay time has passed. Switch raining variable to false
+          }
+        }
       }
-            
-       if (debugMode>=2){
-          Serial.println((String)"[loop]Last Sensor Reading:"+hour()+":"+minute()+":"+second());
-          writeDebugMessageToInternalLog((String)"[loop]Last Sensor Reading:"+hour()+":"+minute()+":"+second());
-       } 
-    
-       //check if Go Home Early is active
-       if (earlyGoHome==true && robiAtHome==false && robiOnTheWayHome == false){
-        //compare measured voltage against defined one
-        if (earlyGoHomeVolt>=batteryVoltage){
-             if (debugMode>=1){
-                Serial.println((String)"[loop]Early Go Home triggered at local time:"+hour()+":"+minute()+":"+second());
-                writeDebugMessageToInternalLog((String)"[loop]Early Go Home triggered at local time:"+hour()+":"+minute()+":"+second());
-                Serial.println((String)"[loop]With sensored Battery Value:"+batteryVoltage+" and limit set:"+earlyGoHomeVolt);
-                writeDebugMessageToInternalLog((String)"[loop]With sensored Battery Value:"+batteryVoltage+" and limit set:"+earlyGoHomeVolt);
-             } 
-             showWebsite=false;
-             handleStopMowing(); //stop mowing to allow to send robi home
-             handleGoHome(); //send Robi home
-             showWebsite=true;
+      lastReadingMin = minute();
+    }
+
+    if (debugMode >= 2) {
+      Serial.println((String)"[loop]Last Sensor Reading:" + hour() + ":" + minute() + ":" + second());
+      writeDebugMessageToInternalLog((String)"[loop]Last Sensor Reading:" + hour() + ":" + minute() + ":" + second());
+    }
+
+    //check if Go Home Early is active
+    if (earlyGoHome == true && robiAtHome == false && robiOnTheWayHome == false) {
+      //compare measured voltage against defined one
+      if (earlyGoHomeVolt >= batteryVoltage) {
+        if (debugMode >= 1) {
+          Serial.println((String)"[loop]Early Go Home triggered at local time:" + hour() + ":" + minute() + ":" + second());
+          writeDebugMessageToInternalLog((String)"[loop]Early Go Home triggered at local time:" + hour() + ":" + minute() + ":" + second());
+          Serial.println((String)"[loop]With sensored Battery Value:" + batteryVoltage + " and limit set:" + earlyGoHomeVolt);
+          writeDebugMessageToInternalLog((String)"[loop]With sensored Battery Value:" + batteryVoltage + " and limit set:" + earlyGoHomeVolt);
         }
-       }
-     lastReadingSec = second();
+        showWebsite = false;
+        handleStopMowing(); //stop mowing to allow to send robi home
+        handleGoHome(); //send Robi home
+        showWebsite = true;
+      }
+    }
+    lastReadingSec = second();
   }
 
   //check if a new day as started
-  if (dailyTasks!=day()){ //and if so then do the daily housework
+  if (dailyTasks != day()) { //and if so then do the daily housework
     doItOnceADay();
-    dailyTasks=day();//store today as new dailyTasks day
+    dailyTasks = day(); //store today as new dailyTasks day
   }
 }
 
-static void handleRoot(void){
+static void handleRoot(void) {
 
-  if (debugMode>=2){
-    Serial.println((String)"[handleRoot]Connection from outside established at local time:"+hour()+":"+minute()+":"+second()+" " + year());
-    writeDebugMessageToInternalLog((String)"[handleRoot]Connection from outside established at local time:"+hour()+":"+minute()+":"+second()+" " + year());
+  if (debugMode >= 2) {
+    Serial.println((String)"[handleRoot]Connection from outside established at local time:" + hour() + ":" + minute() + ":" + second() + " " + year());
+    writeDebugMessageToInternalLog((String)"[handleRoot]Connection from outside established at local time:" + hour() + ":" + minute() + ":" + second() + " " + year());
   }
-  if(onBoardLED){
-    digitalWrite(LED_BUILTIN, LOW); //show connection via LED  
+  if (onBoardLED) {
+    digitalWrite(LED_BUILTIN, LOW); //show connection via LED
   }
-  //preparation work  
+  //preparation work
   int sec = millis() / 1000;
   int min = sec / 60;
   int hr = min / 60;
 
   //Battery Voltage computing
+#ifndef TEST_DATA  
   A0reading = analogRead(BATVOLT);
-  A0reading = A0reading / baseFor1V;
-  batteryVoltage = A0reading * faktorBat;
-
+  batteryVoltage = A0reading * batteryVoltFactor;
+#endif
+  
   char temp[1540];
   snprintf(temp, 1540,
-     "<html>\
+           "<html>\
       <head>\
         <title>LandXcape</title>\
         <style>\
@@ -423,7 +448,7 @@ static void handleRoot(void){
           <p>Laufzeit: %02d:%02d:%02d</p>\
           <p>Lokale Zeit: %02d:%02d:%02d</p>\
           <p>Version: %02lf</p>\
-          <p>Batterie Spannung: %02lf</p>\
+          <p>Batterie Spannung: %05.2f</p>\
           <br>\
           <form method='POST' action='/start'><button type='submit' class='big'>Start</button></form>\
           <br>\
@@ -439,12 +464,12 @@ static void handleRoot(void){
           </div>\
           <br>\
         </body>\
-      </html>",g_cssBody, g_cssButton, hr, min % 60, sec % 60,
-       hour(),minute(),second(),version,batteryVoltage
-      );
+      </html>", g_cssBody, g_cssButton, hr, min % 60, sec % 60,
+           hour(), minute(), second(), version, batteryVoltage
+          );
   wwwserver.send(200, "text/html", temp);
-  if(onBoardLED){
-    digitalWrite(LED_BUILTIN, HIGH); //show successful answer to request    
+  if (onBoardLED) {
+    digitalWrite(LED_BUILTIN, HIGH); //show successful answer to request
   }
 }
 
@@ -452,29 +477,29 @@ static void handleRoot(void){
  * handleStartMowing triggers the Robi to start with his job :)
  * showWebsite true means presenting the website otherwise only an internal call without presenting the website
  */
-static void handleStartMowing(void){
+static void handleStartMowing(void) {
 
-   if (debugMode>=1){
+  if (debugMode >= 1) {
     Serial.println((String)"[handleStartMowing]Start with the Start relay for " + buttonPressTime + "followed with the OK button");
     writeDebugMessageToInternalLog((String)"[handleStartMowing]Start with the Start relay for " + buttonPressTime + "followed with the OK button");
   }
-   
-   digitalWrite(START,LOW);//Press Start Button 
-   delay(buttonPressTime);
-   digitalWrite(START,HIGH);//Release Start Button 
-   delay(buttonPressTime);
-   digitalWrite(OKAY,LOW);//Press Okay Button
-   delay(buttonPressTime);
-   digitalWrite(OKAY,HIGH);//Release Okay Button
 
-  if (debugMode>=1){
-    Serial.println((String)"[handleStartMowing]Mowing started at local time:"+hour()+":"+minute()+":"+second()+" " + year());
-    writeDebugMessageToInternalLog((String)"[handleStartMowing]Mowing started at local time:"+hour()+":"+minute()+":"+second()+" " + year());
+  digitalWrite(START, LOW); //Press Start Button
+  delay(buttonPressTime);
+  digitalWrite(START, HIGH); //Release Start Button
+  delay(buttonPressTime);
+  digitalWrite(OKAY, LOW); //Press Okay Button
+  delay(buttonPressTime);
+  digitalWrite(OKAY, HIGH); //Release Okay Button
+
+  if (debugMode >= 1) {
+    Serial.println((String)"[handleStartMowing]Mowing started at local time:" + hour() + ":" + minute() + ":" + second() + " " + year());
+    writeDebugMessageToInternalLog((String)"[handleStartMowing]Mowing started at local time:" + hour() + ":" + minute() + ":" + second() + " " + year());
   }
-  if (showWebsite){
+  if (showWebsite) {
     char temp[500];
     snprintf(temp, 500,
-       "<html>\
+             "<html>\
         <head>\
           <title>LandXcape</title>\
           <style>\
@@ -488,8 +513,8 @@ static void handleStartMowing(void){
             <p>Das M&auml;hen hat angefangen um: %02d:%02d:%02d</p>\
           </body>\
         </html>",
-        g_cssBody,hour(),minute(),second()
-        );
+             g_cssBody, hour(), minute(), second()
+            );
     wwwserver.send(200, "text/html", temp);
   }
 
@@ -503,26 +528,26 @@ static void handleStartMowing(void){
  * handleStopMowing triggers the Robi to stop with his job and to wait for further instructions :)
  * showWebsite true means presenting the website otherwise only an internal call without presenting the website
  */
-static void handleStopMowing(){
-  
-   if (debugMode>=1){
+static void handleStopMowing() {
+
+  if (debugMode >= 1) {
     Serial.println((String)"[handleStopMowing]Start with the Stop relay for " + buttonPressTime + " before releasing it again");
     writeDebugMessageToInternalLog((String)"[handleStopMowing]Start with the Stop relay for " + buttonPressTime + " before releasing it again");
   }
-   
-   digitalWrite(STOP,LOW);//Press Stop Button 
-   delay(buttonPressTime);
-   digitalWrite(STOP,HIGH);//Release Stop Button 
 
-   
-  if (debugMode>=1){
-    Serial.println((String)"[handleStopMowing]Mowing stoped at local time:"+hour()+":"+minute()+":"+second()+" " + year());
-    writeDebugMessageToInternalLog((String)"[handleStopMowing]Mowing stoped at local time:"+hour()+":"+minute()+":"+second()+" " + year());
+  digitalWrite(STOP, LOW); //Press Stop Button
+  delay(buttonPressTime);
+  digitalWrite(STOP, HIGH); //Release Stop Button
+
+
+  if (debugMode >= 1) {
+    Serial.println((String)"[handleStopMowing]Mowing stoped at local time:" + hour() + ":" + minute() + ":" + second() + " " + year());
+    writeDebugMessageToInternalLog((String)"[handleStopMowing]Mowing stoped at local time:" + hour() + ":" + minute() + ":" + second() + " " + year());
   }
-  if(showWebsite){
+  if (showWebsite) {
     char temp[480];
     snprintf(temp, 480,
-     "<html>\
+             "<html>\
       <head>\
         <title>LandXcape</title>\
         <style>\
@@ -535,8 +560,8 @@ static void handleStopMowing(){
           <p></p>\
           <p>Das M&auml;hen wurde gestoppt um: %02d:%02d:%02d</p>\
         </body>\
-      </html>", g_cssBody, hour(),minute(),second()
-      );
+      </html>", g_cssBody, hour(), minute(), second()
+            );
     wwwserver.send(200, "text/html", temp);
   }
 }
@@ -545,29 +570,29 @@ static void handleStopMowing(){
  * handleGoHome triggers the Robi to go back to his station and to charge :)
  * showWebsite true means presenting the website otherwise only an internal call without presenting the website
  */
-static void handleGoHome(){
-  
-  if (debugMode>=1){
+static void handleGoHome() {
+
+  if (debugMode >= 1) {
     Serial.println((String)"[handleGoHome]Start with the Home relay for " + buttonPressTime + "followed with the OK button for the same time");
     writeDebugMessageToInternalLog((String)"[handleGoHome]Start with the Home relay for " + buttonPressTime + "followed with the OK button for the same time");
   }
-   
-   digitalWrite(HOME,LOW);//Press Home Button 
-   delay(buttonPressTime);
-   digitalWrite(HOME,HIGH);//Release Home Button 
-   delay(buttonPressTime);
-   digitalWrite(OKAY,LOW);//Press Okay Button
-   delay(buttonPressTime);
-   digitalWrite(OKAY,HIGH);//Release Okay Button
-   
-  if (debugMode>=1){
-    Serial.println((String)"[handleGoHome]Robi sent home at local time:"+hour()+":"+minute()+":"+second()+" " + year());
-    writeDebugMessageToInternalLog((String)"[handleGoHome]Robi sent home at local time:"+hour()+":"+minute()+":"+second()+" " + year());
+
+  digitalWrite(HOME, LOW); //Press Home Button
+  delay(buttonPressTime);
+  digitalWrite(HOME, HIGH); //Release Home Button
+  delay(buttonPressTime);
+  digitalWrite(OKAY, LOW); //Press Okay Button
+  delay(buttonPressTime);
+  digitalWrite(OKAY, HIGH); //Release Okay Button
+
+  if (debugMode >= 1) {
+    Serial.println((String)"[handleGoHome]Robi sent home at local time:" + hour() + ":" + minute() + ":" + second() + " " + year());
+    writeDebugMessageToInternalLog((String)"[handleGoHome]Robi sent home at local time:" + hour() + ":" + minute() + ":" + second() + " " + year());
   }
-  if (showWebsite){
-  char temp[490];
+  if (showWebsite) {
+    char temp[490];
     snprintf(temp, 490,
-     "<html>\
+             "<html>\
       <head>\
         <title>LandXcape</title>\
         <style>\
@@ -581,8 +606,8 @@ static void handleGoHome(){
           <p>Das M&auml;hen wurde gestoppt und R&uck;fahrt zur Basis gestartet um: %02d:%02d:%02d</p>\
         </body>\
       </html>",
-      g_cssBody, hour(),minute(),second()
-      );
+             g_cssBody, hour(), minute(), second()
+            );
     wwwserver.send(200, "text/html", temp);
   }
 
@@ -597,83 +622,83 @@ static void handleGoHome(){
  * showStatistics shows all kind of statistics for the nerdy user ;)
  */
 
-static void showStatistics(void){
-  if(onBoardLED){
-    digitalWrite(LED_BUILTIN, LOW); //show connection via LED   
+static void showStatistics(void) {
+  if (onBoardLED) {
+    digitalWrite(LED_BUILTIN, LOW); //show connection via LED
   }
- 
-    if (debugMode>=2){
-      Serial.println((String)"[showStatistics]showStatistics site requested at local time:"+hour()+":"+minute()+":"+second()+" " + year());
-      writeDebugMessageToInternalLog((String)"[showStatistics]showStatistics site requested at local time:"+hour()+":"+minute()+":"+second()+" " + year());
-    }
-    
-    int sec = millis() / 1000;
-    int min = sec / 60;
-    int hr = min / 60;
-    int days = hr / 24;
-    double cellVoltage = batteryVoltage/5;
 
-    String sunrise_ = (String)""+sunrise/60+"h "+sunrise%60+"min";
-    char sunrise__[10];
-    sunrise_.toCharArray(sunrise__,10);
-    String sunset_ = (String)""+sunset/60+"h "+sunset%60+"min";
-    char sunset__[10];
-    sunset_.toCharArray(sunset__,10);
+  if (debugMode >= 2) {
+    Serial.println((String)"[showStatistics]showStatistics site requested at local time:" + hour() + ":" + minute() + ":" + second() + " " + year());
+    writeDebugMessageToInternalLog((String)"[showStatistics]showStatistics site requested at local time:" + hour() + ":" + minute() + ":" + second() + " " + year());
+  }
 
-    char* isChargingValue;
-    char* robiAtHomeValue; 
-    char* robiOnTheWayHomeValue; 
-    char* hasChargedValue;
+  int sec = millis() / 1000;
+  int min = sec / 60;
+  int hr = min / 60;
+  int days = hr / 24;
+  double cellVoltage = batteryVoltage / 5;
 
-    if (isCharging){
-      isChargingValue = true_;
-    }else{
-      isChargingValue = false_;
-    }
+  String sunrise_ = (String)"" + sunrise / 60 + "h " + sunrise % 60 + "min";
+  char sunrise__[10];
+  sunrise_.toCharArray(sunrise__, 10);
+  String sunset_ = (String)"" + sunset / 60 + "h " + sunset % 60 + "min";
+  char sunset__[10];
+  sunset_.toCharArray(sunset__, 10);
 
-    if (hasCharged){
-      hasChargedValue = true_;
-    }else{
-      hasChargedValue = false_;
-    }
+  char* isChargingValue;
+  char* robiAtHomeValue;
+  char* robiOnTheWayHomeValue;
+  char* hasChargedValue;
 
-    if (robiAtHome){
-      robiAtHomeValue = true_;
-    }else{
-      robiAtHomeValue = false_;
-    }
+  if (isCharging) {
+    isChargingValue = true_;
+  } else {
+    isChargingValue = false_;
+  }
 
-    if (robiOnTheWayHome){
-      robiOnTheWayHomeValue = true_;
-    }else{
-      robiOnTheWayHomeValue = false_;
-    }
+  if (hasCharged) {
+    hasChargedValue = true_;
+  } else {
+    hasChargedValue = false_;
+  }
 
-    char rainStatus_ [] = "Kein Regen";
-    char rainDelay_ [] ="20";
-    char rainDelayText_ [37] = "";
-    
-    if(getRainSensorStatus()){
+  if (robiAtHome) {
+    robiAtHomeValue = true_;
+  } else {
+    robiAtHomeValue = false_;
+  }
+
+  if (robiOnTheWayHome) {
+    robiOnTheWayHomeValue = true_;
+  } else {
+    robiOnTheWayHomeValue = false_;
+  }
+
+  char rainStatus_ [] = "Kein Regen";
+  char rainDelay_ [] = "20";
+  char rainDelayText_ [37] = "";
+
+  if (getRainSensorStatus()) {
+    strncpy(rainStatus_, "es regnet...", sizeof(rainStatus_));
+
+    itoa(rainingDelay_, rainDelay_, 10);
+    strcat(rainDelayText_, "Warteverz&ouml;gerung: ");
+    strcat(rainDelayText_, rainDelay_);
+    strcat(rainDelayText_, " Minuten");
+  } else {
+    if (raining) { //show as long as the raining flag is active
       strncpy(rainStatus_, "es regnet...", sizeof(rainStatus_));
 
-      itoa(rainingDelay_,rainDelay_,10);
-      strcat(rainDelayText_,"Warteverz&ouml;gerung: ");
-      strcat(rainDelayText_,rainDelay_);
-      strcat(rainDelayText_," Minuten");
-    }else{
-      if (raining){ //show as long as the raining flag is active
-        strncpy(rainStatus_, "es regnet...", sizeof(rainStatus_));
-        
-        itoa(rainingDelay_,rainDelay_,10);
-        strcat(rainDelayText_,"Warteverz&ouml;gerung nach dem Regen: ");
-        strcat(rainDelayText_,rainDelay_);
-        strcat(rainDelayText_," Minuten");
-      }
+      itoa(rainingDelay_, rainDelay_, 10);
+      strcat(rainDelayText_, "Warteverz&ouml;gerung nach dem Regen: ");
+      strcat(rainDelayText_, rainDelay_);
+      strcat(rainDelayText_, " Minuten");
     }
-        
-    char temp[1960];
-    snprintf(temp, 1960,
-     "<html>\
+  }
+
+  char temp[1960];
+  snprintf(temp, 1960,
+           "<html>\
       <head>\
         <title>LandXcape Statistics</title>\
         <style>\
@@ -699,9 +724,9 @@ static void showStatistics(void){
               <th>Batterie:</th>\
             </tr>\
             <tr>\
-              <th>Aktuelle Spannung: %02lf</th>\
-              <th>Niedrigste Spannung: %02lf</th>\
-              <th>H&ouml;chste Spannung: %02lf</th>\
+              <th>Aktuelle Spannung: %05.2f</th>\
+              <th>Niedrigste Spannung: %05.2f</th>\
+              <th>H&ouml;chste Spannung: %05.2f</th>\
             </tr>\
             <tr>\
               <th>Zelle:</th>\
@@ -709,9 +734,9 @@ static void showStatistics(void){
               <th></th>\
             </tr>\
             <tr>\
-              <th>Aktuelle Spannung: %02lf</th>\
-              <th>Niedrigste Spannung: %02lf</th>\
-              <th>H&ouml;chste Spannung: %02lf</th>\
+              <th>Aktuelle Spannung: %05.2f</th>\
+              <th>Niedrigste Spannung: %05.2f</th>\
+              <th>H&ouml;chste Spannung: %05.2f</th>\
             </tr>\
           </table>\
           <p></p>\
@@ -723,57 +748,57 @@ static void showStatistics(void){
           <form method='POST' action='/'><button type='submit'>Zur&uuml;ck zur Startseite</button></form>\
         </body>\
       </html>",
-      g_cssBody, g_cssButton, days,hr%24, min % 60, sec % 60,hour(),minute(),second(),day(),month(),year(),sunrise__,sunset__,hasChargedValue,isChargingValue,robiOnTheWayHomeValue,robiAtHomeValue,rainStatus_,rainDelayText_,
-      version,batteryVoltage,lowestBatVoltage,highestBatVoltage,cellVoltage,lowestCellVoltage,highestCellVoltage,lastXXminBatHist,ESP.getFreeHeap(),ESP.getHeapFragmentation(),ESP.getMaxFreeBlockSize()
-      );
+           g_cssBody, g_cssButton, days, hr % 24, min % 60, sec % 60, hour(), minute(), second(), day(), month(), year(), sunrise__, sunset__, hasChargedValue, isChargingValue, robiOnTheWayHomeValue, robiAtHomeValue, rainStatus_, rainDelayText_,
+           version, batteryVoltage, lowestBatVoltage, highestBatVoltage, cellVoltage, lowestCellVoltage, highestCellVoltage, lastXXminBatHist, ESP.getFreeHeap(), ESP.getHeapFragmentation(), ESP.getMaxFreeBlockSize()
+          );
 
-    wwwserver.send(200, "text/html", temp);
+  wwwserver.send(200, "text/html", temp);
 
-  if(onBoardLED){
-    digitalWrite(LED_BUILTIN, HIGH); //show connection via LED   
+  if (onBoardLED) {
+    digitalWrite(LED_BUILTIN, HIGH); //show connection via LED
   }
 }
 
 /*
  * handleAdministration allows to administrate your settings :) earlyGoHome
  */
-static void handleAdministration(void){
+static void handleAdministration(void) {
 
-  if(onBoardLED){
-    digitalWrite(LED_BUILTIN, LOW); //show connection via LED   
+  if (onBoardLED) {
+    digitalWrite(LED_BUILTIN, LOW); //show connection via LED
   }
 
-    if (debugMode>=1){
-      Serial.println((String)"[handleAdmin]Administration site requested at local time:"+hour()+":"+minute()+":"+second()+" " + year());
-      writeDebugMessageToInternalLog((String)"[handleAdmin]Administration site requested at local time:"+hour()+":"+minute()+":"+second()+" " + year());
-    }
-    //preparations
-    //char temp[2500];
-    char earlyGoHomeCheckBoxValue [] = "unchecked";
-    if (earlyGoHome==true){
-      strncpy(earlyGoHomeCheckBoxValue, "checked  ", sizeof(earlyGoHomeCheckBoxValue));
-    }
-    int earlyGoHomeVolt_ = earlyGoHomeVolt;
-    int earlyGoHome_mVolt_ = (double(earlyGoHomeVolt-earlyGoHomeVolt_)*1000); // subtract the voltage and multiply by 1000 to get the milivolts
+  if (debugMode >= 1) {
+    Serial.println((String)"[handleAdmin]Administration site requested at local time:" + hour() + ":" + minute() + ":" + second() + " " + year());
+    writeDebugMessageToInternalLog((String)"[handleAdmin]Administration site requested at local time:" + hour() + ":" + minute() + ":" + second() + " " + year());
+  }
+  //preparations
+  //char temp[2500];
+  char earlyGoHomeCheckBoxValue [] = "unchecked";
+  if (earlyGoHome == true) {
+    strncpy(earlyGoHomeCheckBoxValue, "checked  ", sizeof(earlyGoHomeCheckBoxValue));
+  }
+  int earlyGoHomeVolt_ = earlyGoHomeVolt;
+  int earlyGoHome_mVolt_ = (double(earlyGoHomeVolt - earlyGoHomeVolt_) * 1000); // subtract the voltage and multiply by 1000 to get the milivolts
 
-    char allDayMowingCheckBoxValue [] = "unchecked";
-    if (allDayMowing==true){
-      strncpy(allDayMowingCheckBoxValue, "checked  ",sizeof(allDayMowingCheckBoxValue));
-    }   
+  char allDayMowingCheckBoxValue [] = "unchecked";
+  if (allDayMowing == true) {
+    strncpy(allDayMowingCheckBoxValue, "checked  ", sizeof(allDayMowingCheckBoxValue));
+  }
 
-    char forwardRainInfoValue [] = "unchecked";
-    if (forwardRainInfoToLandXcape==true){
-      strncpy(forwardRainInfoValue, "checked  ",sizeof(forwardRainInfoValue));
-    }
-    
-    char ignoreRainValue [] = "unchecked";
-    if (ignoreRain==true){
-      strncpy(ignoreRainValue, "checked  ",sizeof(ignoreRainValue));
-    } 
+  char forwardRainInfoValue [] = "unchecked";
+  if (forwardRainInfoToLandXcape == true) {
+    strncpy(forwardRainInfoValue, "checked  ", sizeof(forwardRainInfoValue));
+  }
 
-    char temp[2680];
-    snprintf(temp, 2680,
-     "<html>\
+  char ignoreRainValue [] = "unchecked";
+  if (ignoreRain == true) {
+    strncpy(ignoreRainValue, "checked  ", sizeof(ignoreRainValue));
+  }
+
+  char temp[2680];
+  snprintf(temp, 2680,
+           "<html>\
      <head>\
      <title>LandXcape</title>\
       <style>\
@@ -786,7 +811,7 @@ static void handleAdministration(void){
         <h1>LandXcape Administrations Seite</h1>\
         <p></p>\
         <form method='POST' action='/newAdminConfiguration'>\
-        Batterie Historie: Zeige <input type='number' name='batHistMinShown' value='%02d'  min=60 max=400> Minuten<br>\
+        Batterie Historie: Zeige <input type='number' name='batHistMinShown' value='%02d'  min=60 max=%d> Minuten<br>\
         Aktiviere die Funktion \"Go Home Early\" <input type='checkbox' name='goHomeEarly' %s ><br>\
         Wenn aktiv, sende den LandXcape zur Basis bei: <input type='number' name='batVol' value='%02d' min=16 max=20> V <input type='number' name='batMiliVolt' value='%03d' min=000 max=999>mV<br>\
         Wenn nicht aktiv, definiert dieser Wert die Batteriespannung bei der kein<br>neuer M&auml;hvorgang gestartet wird, ehe nicht geladen wurde<br>\
@@ -814,51 +839,51 @@ static void handleAdministration(void){
           </tr>\
         </table>\
       </body>\
-    </html>",g_cssBody,g_cssButton,lastXXminBatHist,earlyGoHomeCheckBoxValue,earlyGoHomeVolt_,earlyGoHome_mVolt_,allDayMowingCheckBoxValue,forwardRainInfoValue,ignoreRainValue
-      );
+    </html>", g_cssBody, g_cssButton, lastXXminBatHist, maxBatHistValues, earlyGoHomeCheckBoxValue, earlyGoHomeVolt_, earlyGoHome_mVolt_, allDayMowingCheckBoxValue, forwardRainInfoValue, ignoreRainValue
+          );
 
-      wwwserver.send(200, "text/html", temp);        
+  wwwserver.send(200, "text/html", temp);
 
-    if(onBoardLED){
-      digitalWrite(LED_BUILTIN, HIGH); //show successful answer to request    
-    }
+  if (onBoardLED) {
+    digitalWrite(LED_BUILTIN, HIGH); //show successful answer to request
+  }
 }
 
 /**
  * computeNewAdminConfig overwrites the present values by the given values from the user
  */
-static void computeNewAdminConfig(void){
-  if(onBoardLED){
-    digitalWrite(LED_BUILTIN, LOW); //show connection via LED   
+static void computeNewAdminConfig(void) {
+  if (onBoardLED) {
+    digitalWrite(LED_BUILTIN, LOW); //show connection via LED
   }
- 
-    // Check if the POST request has crendentials and if they are correct
-    if(! wwwserver.hasArg("batHistMinShown") || wwwserver.arg("batHistMinShown") == NULL ||
-       ! wwwserver.hasArg("batVol") || wwwserver.arg("batVol") == NULL || ! wwwserver.hasArg("batMiliVolt") || wwwserver.arg("batMiliVolt") == NULL ){ 
-      wwwserver.send(400, "text/plain","400: Invalid Request"); // The request is invalid, so send HTTP status 400
-      return;
-    }
 
-    //compute given values
-    int batHistMinShown_ = wwwserver.arg("batHistMinShown").toInt();
-    if (batHistMinShown_ >= 60 && batHistMinShown_ <=400){ //set it only if its valid
-       lastXXminBatHist = batHistMinShown_;     
-    }
+  // Check if the POST request has crendentials and if they are correct
+  if (! wwwserver.hasArg("batHistMinShown") || wwwserver.arg("batHistMinShown") == NULL ||
+      ! wwwserver.hasArg("batVol") || wwwserver.arg("batVol") == NULL || ! wwwserver.hasArg("batMiliVolt") || wwwserver.arg("batMiliVolt") == NULL ) {
+    wwwserver.send(400, "text/plain", "400: Invalid Request"); // The request is invalid, so send HTTP status 400
+    return;
+  }
 
-    earlyGoHome = (boolean)wwwserver.hasArg("goHomeEarly");
-    int batVolt = wwwserver.arg("batVol").toInt();
-    int batMiliVolt = wwwserver.arg("batMiliVolt").toInt();
-    earlyGoHomeVolt = (double)batVolt+(double) batMiliVolt/1000;
+  //compute given values
+  int batHistMinShown_ = wwwserver.arg("batHistMinShown").toInt();
+  if (batHistMinShown_ >= 60 && batHistMinShown_ <= maxBatHistValues) { //set it only if its valid
+    lastXXminBatHist = batHistMinShown_;
+  }
 
-    allDayMowing = (boolean)wwwserver.hasArg("allDayMowing_");
-    forwardRainInfoToLandXcape = (boolean)wwwserver.hasArg("forwardRainInfo_");
-    ignoreRain = (boolean)wwwserver.hasArg("ignoreRain_");
+  earlyGoHome = (boolean)wwwserver.hasArg("goHomeEarly");
+  int batVolt = wwwserver.arg("batVol").toInt();
+  int batMiliVolt = wwwserver.arg("batMiliVolt").toInt();
+  earlyGoHomeVolt = (double)batVolt + (double) batMiliVolt / 1000;
 
-    boolean formatFlashStorage = (boolean)wwwserver.hasArg("formatFlashStorage");
-    
-    char temp[820];
-    snprintf(temp, 820,
-     "<html>\
+  allDayMowing = (boolean)wwwserver.hasArg("allDayMowing_");
+  forwardRainInfoToLandXcape = (boolean)wwwserver.hasArg("forwardRainInfo_");
+  ignoreRain = (boolean)wwwserver.hasArg("ignoreRain_");
+
+  boolean formatFlashStorage = (boolean)wwwserver.hasArg("formatFlashStorage");
+
+  char temp[820];
+  snprintf(temp, 820,
+           "<html>\
       <head>\
         <title>LandXcape</title>\
         <style>\
@@ -878,75 +903,75 @@ static void computeNewAdminConfig(void){
           <p>Flash Storage will be formated: %d</p>\
       </body>\
     </html>",
-    g_cssBody,hour(),minute(),second(),lastXXminBatHist,earlyGoHome,earlyGoHomeVolt,forwardRainInfoToLandXcape,ignoreRain,allDayMowing,formatFlashStorage
-    );
-    wwwserver.send(200, "text/html", temp);
+           g_cssBody, hour(), minute(), second(), lastXXminBatHist, earlyGoHome, earlyGoHomeVolt, forwardRainInfoToLandXcape, ignoreRain, allDayMowing, formatFlashStorage
+          );
+  wwwserver.send(200, "text/html", temp);
 
-    if (debugMode>=1){
-      Serial.println((String)"[computeNewAdminConfig]New Admin config transmitted at local time:"+hour()+":"+minute()+":"+second()+" " + year());
-      writeDebugMessageToInternalLog((String)"[computeNewAdminConfig]New Admin config transmitted at local time:"+hour()+":"+minute()+":"+second()+" " + year());
-      Serial.println("[computeNewAdminConfig]With the following values:");
-      writeDebugMessageToInternalLog((String)"[computeNewAdminConfig]With the following values:");
-      Serial.println("[computeNewAdminConfig]");
-      writeDebugMessageToInternalLog((String)"[computeNewAdminConfig]");
-      Serial.println((String)"[computeNewAdminConfig]Battery History Showtime"+lastXXminBatHist);
-      writeDebugMessageToInternalLog((String)"[computeNewAdminConfig]Battery History Showtime"+lastXXminBatHist);
-      Serial.println((String)"[computeNewAdminConfig]GoHomeEarly Function:"+earlyGoHome);
-      writeDebugMessageToInternalLog((String)"[computeNewAdminConfig]GoHomeEarly Function:"+earlyGoHome);
-      Serial.println((String)"[computeNewAdminConfig]GoHomeEarly Voltage:"+earlyGoHomeVolt);
-      writeDebugMessageToInternalLog((String)"[computeNewAdminConfig]GoHomeEarly Voltage:"+earlyGoHomeVolt);
-      Serial.println((String)"[computeNewAdminConfig]ForwardRainInfoToLandXcape Function:"+forwardRainInfoToLandXcape);
-      writeDebugMessageToInternalLog((String)"[computeNewAdminConfig]ForwardRainInfoToLandXcape Function:"+forwardRainInfoToLandXcape);
-      Serial.println((String)"[computeNewAdminConfig]Ignore rain Function:"+ignoreRain);
-      writeDebugMessageToInternalLog((String)"[computeNewAdminConfig]Ignore rain Function:"+ignoreRain);
-      Serial.println((String)"[computeNewAdminConfig]Mow from sunrise to Sunset Function:"+allDayMowing);
-      writeDebugMessageToInternalLog((String)"[computeNewAdminConfig]Mow from sunrise to Sunset Function:"+allDayMowing);
-      Serial.println((String)"[computeNewAdminConfig]Flash storage shall be formated:"+formatFlashStorage);
-      writeDebugMessageToInternalLog((String)"[computeNewAdminConfig]MFlash storage shall be formated:"+formatFlashStorage);
-    }
-    
-    computeGraphBasedOnBatValues();
-    
-    if (debugMode>=1){
-      Serial.println("[computeNewAdminConfig]Update of the battery voltage picture realized.");
-      writeDebugMessageToInternalLog((String)"[computeNewAdminConfig]Update of the battery voltage picture realized.");
-    }
+  if (debugMode >= 1) {
+    Serial.println((String)"[computeNewAdminConfig]New Admin config transmitted at local time:" + hour() + ":" + minute() + ":" + second() + " " + year());
+    writeDebugMessageToInternalLog((String)"[computeNewAdminConfig]New Admin config transmitted at local time:" + hour() + ":" + minute() + ":" + second() + " " + year());
+    Serial.println("[computeNewAdminConfig]With the following values:");
+    writeDebugMessageToInternalLog((String)"[computeNewAdminConfig]With the following values:");
+    Serial.println("[computeNewAdminConfig]");
+    writeDebugMessageToInternalLog((String)"[computeNewAdminConfig]");
+    Serial.println((String)"[computeNewAdminConfig]Battery History Showtime" + lastXXminBatHist);
+    writeDebugMessageToInternalLog((String)"[computeNewAdminConfig]Battery History Showtime" + lastXXminBatHist);
+    Serial.println((String)"[computeNewAdminConfig]GoHomeEarly Function:" + earlyGoHome);
+    writeDebugMessageToInternalLog((String)"[computeNewAdminConfig]GoHomeEarly Function:" + earlyGoHome);
+    Serial.println((String)"[computeNewAdminConfig]GoHomeEarly Voltage:" + earlyGoHomeVolt);
+    writeDebugMessageToInternalLog((String)"[computeNewAdminConfig]GoHomeEarly Voltage:" + earlyGoHomeVolt);
+    Serial.println((String)"[computeNewAdminConfig]ForwardRainInfoToLandXcape Function:" + forwardRainInfoToLandXcape);
+    writeDebugMessageToInternalLog((String)"[computeNewAdminConfig]ForwardRainInfoToLandXcape Function:" + forwardRainInfoToLandXcape);
+    Serial.println((String)"[computeNewAdminConfig]Ignore rain Function:" + ignoreRain);
+    writeDebugMessageToInternalLog((String)"[computeNewAdminConfig]Ignore rain Function:" + ignoreRain);
+    Serial.println((String)"[computeNewAdminConfig]Mow from sunrise to Sunset Function:" + allDayMowing);
+    writeDebugMessageToInternalLog((String)"[computeNewAdminConfig]Mow from sunrise to Sunset Function:" + allDayMowing);
+    Serial.println((String)"[computeNewAdminConfig]Flash storage shall be formated:" + formatFlashStorage);
+    writeDebugMessageToInternalLog((String)"[computeNewAdminConfig]MFlash storage shall be formated:" + formatFlashStorage);
+  }
 
-    if (formatFlashStorage){ //Format Filesystem as whished
-      if(debugMode>=1){      
-        Serial.println("[computeNewAdminConfig]Formatting flash storage as selected...");
-        writeDebugMessageToInternalLog((String)"[computeNewAdminConfig]Formatting flash storage as selected...");
-      }
-      formatFS();
-    } 
-    if(onBoardLED){
-      digitalWrite(LED_BUILTIN, HIGH); //show successful answer to request    
+  computeGraphBasedOnBatValues();
+
+  if (debugMode >= 1) {
+    Serial.println("[computeNewAdminConfig]Update of the battery voltage picture realized.");
+    writeDebugMessageToInternalLog((String)"[computeNewAdminConfig]Update of the battery voltage picture realized.");
+  }
+
+  if (formatFlashStorage) { //Format Filesystem as whished
+    if (debugMode >= 1) {
+      Serial.println("[computeNewAdminConfig]Formatting flash storage as selected...");
+      writeDebugMessageToInternalLog((String)"[computeNewAdminConfig]Formatting flash storage as selected...");
     }
+    formatFS();
+  }
+  if (onBoardLED) {
+    digitalWrite(LED_BUILTIN, HIGH); //show successful answer to request
+  }
 }
 
 /*
  * handleSwitchOnOff allows to Power the robi on or off as you wish
  */
-static void handleSwitchOnOff(void){
+static void handleSwitchOnOff(void) {
 
- if (debugMode>=1){
-    Serial.println((String)"[handleSwitchOnOff]handleSwitchOnOff triggered at local time:"+hour()+":"+minute()+":"+second()+" " + year());
-    writeDebugMessageToInternalLog((String)"[handleSwitchOnOff]handleSwitchOnOff triggered at local time:"+hour()+":"+minute()+":"+second()+" " + year());
+  if (debugMode >= 1) {
+    Serial.println((String)"[handleSwitchOnOff]handleSwitchOnOff triggered at local time:" + hour() + ":" + minute() + ":" + second() + " " + year());
+    writeDebugMessageToInternalLog((String)"[handleSwitchOnOff]handleSwitchOnOff triggered at local time:" + hour() + ":" + minute() + ":" + second() + " " + year());
   }
-   
-   digitalWrite(PWR,LOW);//Press Home Button 
-   delay(PWRButtonPressTime);
-   digitalWrite(PWR,HIGH);//Release Home Button 
-   delay(PWRButtonPressTime);
-   
+
+  digitalWrite(PWR, LOW); //Press Home Button
+  delay(PWRButtonPressTime);
+  digitalWrite(PWR, HIGH); //Release Home Button
+  delay(PWRButtonPressTime);
+
   char temp[420];
   snprintf(temp, 420,
-   "<html>\
+           "<html>\
     <head>\
       <title>LandXcape</title>\
       <style>\
         %s\\
-      </style>\
+           </style>\
       <meta http-equiv='Refresh' content='4; url=\\'>\
     </head>\
       <body>\
@@ -955,8 +980,8 @@ static void handleSwitchOnOff(void){
         <p>Robi switched off/on at local time: %02d:%02d:%02d</p>\
       </body>\
     </html>",
-    g_cssBody, hour(),minute(),second()
-    );
+           g_cssBody, hour(), minute(), second()
+          );
   wwwserver.send(200, "text/html", temp);
 
   enterPinCode();
@@ -965,85 +990,85 @@ static void handleSwitchOnOff(void){
 /**
  * enterPinCode enters automatically the correct pin as statically given
  */
-static void enterPinCode(void){
-  if (debugMode>=1){
-    Serial.println((String)"[enterPinCode]enterPinCode triggered at local time:"+hour()+":"+minute()+":"+second()+" " + year());
-    writeDebugMessageToInternalLog((String)"[enterPinCode]enterPinCode triggered at local time:"+hour()+":"+minute()+":"+second()+" " + year());
+static void enterPinCode(void) {
+  if (debugMode >= 1) {
+    Serial.println((String)"[enterPinCode]enterPinCode triggered at local time:" + hour() + ":" + minute() + ":" + second() + " " + year());
+    writeDebugMessageToInternalLog((String)"[enterPinCode]enterPinCode triggered at local time:" + hour() + ":" + minute() + ":" + second() + " " + year());
   }
 
   //start with a delay before entering the pin code
   delay(3000);
 
   int fstNumber = robiPinCode / 1000;
-  int sndNumber = (robiPinCode - fstNumber*1000) / 100;
-  int trdNumber = (robiPinCode - (fstNumber*1000 + sndNumber*100)) / 10;
-  int lstNumber = (robiPinCode - (fstNumber*1000 + sndNumber*100 + trdNumber*10)); 
- 
+  int sndNumber = (robiPinCode - fstNumber * 1000) / 100;
+  int trdNumber = (robiPinCode - (fstNumber * 1000 + sndNumber * 100)) / 10;
+  int lstNumber = (robiPinCode - (fstNumber * 1000 + sndNumber * 100 + trdNumber * 10));
+
   //set the PinCode first row
-  for (int i=0; i!=fstNumber; i++){
-   digitalWrite(START,LOW);//Press Start Button 
-   delay(buttonPressTime);
-   digitalWrite(START,HIGH);//Release Start Button 
-   delay(buttonPressTime);
+  for (int i = 0; i != fstNumber; i++) {
+    digitalWrite(START, LOW); //Press Start Button
+    delay(buttonPressTime);
+    digitalWrite(START, HIGH); //Release Start Button
+    delay(buttonPressTime);
   }
 
   //Switch to next pin
-   digitalWrite(OKAY,LOW);//Press OK Button 
-   delay(buttonPressTime);
-   digitalWrite(OKAY,HIGH);//Release OK Button 
-   delay(buttonPressTime);
+  digitalWrite(OKAY, LOW); //Press OK Button
+  delay(buttonPressTime);
+  digitalWrite(OKAY, HIGH); //Release OK Button
+  delay(buttonPressTime);
 
   //set the PinCode second row
-  for (int i=fstNumber;  i!=sndNumber; i=(i+1)%10){
-   digitalWrite(START,LOW);//Press Start Button 
-   delay(buttonPressTime);
-   digitalWrite(START,HIGH);//Release Start Button 
-   delay(buttonPressTime);
+  for (int i = fstNumber;  i != sndNumber; i = (i + 1) % 10) {
+    digitalWrite(START, LOW); //Press Start Button
+    delay(buttonPressTime);
+    digitalWrite(START, HIGH); //Release Start Button
+    delay(buttonPressTime);
   }
 
-   //Switch to next pin
-   digitalWrite(OKAY,LOW);//Press OK Button 
-   delay(buttonPressTime);
-   digitalWrite(OKAY,HIGH);//Release OK Button 
-   delay(buttonPressTime);
+  //Switch to next pin
+  digitalWrite(OKAY, LOW); //Press OK Button
+  delay(buttonPressTime);
+  digitalWrite(OKAY, HIGH); //Release OK Button
+  delay(buttonPressTime);
 
   //set the PinCode third row
-  for (int i=sndNumber; i!=trdNumber; i=(i+1)%10){
-   digitalWrite(START,LOW);//Press Start Button 
-   delay(buttonPressTime);
-   digitalWrite(START,HIGH);//Release Start Button 
-   delay(buttonPressTime);
+  for (int i = sndNumber; i != trdNumber; i = (i + 1) % 10) {
+    digitalWrite(START, LOW); //Press Start Button
+    delay(buttonPressTime);
+    digitalWrite(START, HIGH); //Release Start Button
+    delay(buttonPressTime);
   }
 
-   //Switch to last pin
-   digitalWrite(OKAY,LOW);//Press OK Button 
-   delay(buttonPressTime);
-   digitalWrite(OKAY,HIGH);//Release OK Button 
-   delay(buttonPressTime);;
+  //Switch to last pin
+  digitalWrite(OKAY, LOW); //Press OK Button
+  delay(buttonPressTime);
+  digitalWrite(OKAY, HIGH); //Release OK Button
+  delay(buttonPressTime);;
 
   //set the PinCode last row
-  for (int i=trdNumber;  i!=lstNumber ; i=(i+1)%10){
-   digitalWrite(START,LOW);//Press Start Button 
-   delay(buttonPressTime);
-   digitalWrite(START,HIGH);//Release Start Button 
-   delay(buttonPressTime);
+  for (int i = trdNumber;  i != lstNumber ; i = (i + 1) % 10) {
+    digitalWrite(START, LOW); //Press Start Button
+    delay(buttonPressTime);
+    digitalWrite(START, HIGH); //Release Start Button
+    delay(buttonPressTime);
   }
 
-   //Confirm Pin Code
-   digitalWrite(OKAY,LOW);//Press OK Button 
-   delay(buttonPressTime);
-   digitalWrite(OKAY,HIGH);//Release OK Button 
-   delay(buttonPressTime);
+  //Confirm Pin Code
+  digitalWrite(OKAY, LOW); //Press OK Button
+  delay(buttonPressTime);
+  digitalWrite(OKAY, HIGH); //Release OK Button
+  delay(buttonPressTime);
 
-  if (debugMode>=1){
-    Serial.println((String)"[enterPinCode]enterPinCode finisched at local time:"+hour()+":"+minute()+":"+second()+" " + year());
-    writeDebugMessageToInternalLog((String)"[enterPinCode]enterPinCode finisched at local time:"+hour()+":"+minute()+":"+second()+" " + year());
+  if (debugMode >= 1) {
+    Serial.println((String)"[enterPinCode]enterPinCode finisched at local time:" + hour() + ":" + minute() + ":" + second() + " " + year());
+    writeDebugMessageToInternalLog((String)"[enterPinCode]enterPinCode finisched at local time:" + hour() + ":" + minute() + ":" + second() + " " + year());
   }
 }
 
 //Get the current time via NTP over the Internet
-static boolean syncTimeViaNTP(void){
-  
+static boolean syncTimeViaNTP(void) {
+
   //local one time variables
   WiFiUDP udp;
   int localPort = 2390;      // local port to listen for UDP packets
@@ -1052,111 +1077,111 @@ static boolean syncTimeViaNTP(void){
   int NTP_PACKET_SIZE = 48; // NTP time stamp is in the first 48 bytes of the message
   byte packetBuffer[ NTP_PACKET_SIZE]; //buffer to hold incoming and outgoing packets
 
-    if (debugMode>=1){
-      Serial.println("[syncTimeViaNTP]Starting UDP");
-      writeDebugMessageToInternalLog((String)"[syncTimeViaNTP]Starting UDP");
+  if (debugMode >= 1) {
+    Serial.println(F("[syncTimeViaNTP]Starting UDP"));
+    writeDebugMessageToInternalLog((String)"[syncTimeViaNTP]Starting UDP");
+  }
+  udp.begin(localPort);
+
+  //get a random server from the pool
+  WiFi.hostByName(ntpServerName, timeServerIP);
+
+  if (debugMode >= 1) {
+    Serial.println(F("[syncTimeViaNTP]sending NTP packet..."));
+    writeDebugMessageToInternalLog((String)"[syncTimeViaNTP]sending NTP packet...");
+  }
+
+  // set all bytes in the buffer to 0
+  memset(packetBuffer, 0, NTP_PACKET_SIZE);
+  // Initialize values needed to form request
+  // (see URL above for details on the packets)
+  packetBuffer[0] = 0b11100011;   // LI, Version, Mode
+  packetBuffer[1] = 0;     // Stratum, or type of clock
+  packetBuffer[2] = 6;     // Polling Interval
+  packetBuffer[3] = 0xEC;  // Peer Clock Precision
+  // 8 bytes of zero for Root Delay & Root Dispersion
+  packetBuffer[12]  = 49;
+  packetBuffer[13]  = 0x4E;
+  packetBuffer[14]  = 49;
+  packetBuffer[15]  = 52;
+
+  // all NTP fields have been given values, now
+  // you can send a packet requesting a timestamp:
+  udp.beginPacket(timeServerIP, 123); //NTP requests are to port 123
+  udp.write(packetBuffer, NTP_PACKET_SIZE);
+  udp.endPacket();
+
+  // wait for a sure reply or otherwise cancel time setting process
+  delay(1200);
+  int cb = udp.parsePacket();
+  if (!cb) {
+    if (debugMode) {
+      Serial.println((String)"[syncTimeViaNTP]Time setting failed. Received Packets=" + cb);
+      writeDebugMessageToInternalLog((String)"[syncTimeViaNTP]Time setting failed. Received Packets=" + cb);
     }
-    udp.begin(localPort);
-  
-    //get a random server from the pool
-    WiFi.hostByName(ntpServerName, timeServerIP);
+    return false;
+  }
 
-    if (debugMode>=1){
-      Serial.println("[syncTimeViaNTP]sending NTP packet...");
-      writeDebugMessageToInternalLog((String)"[syncTimeViaNTP]sending NTP packet...");
+  if (debugMode >= 1) {
+    Serial.println((String)"[syncTimeViaNTP]packet received, length=" + cb);
+    writeDebugMessageToInternalLog((String)"[syncTimeViaNTP]packet received, length=" + cb);
+  }
+
+  // We've received a packet, read the data from it
+  udp.read(packetBuffer, NTP_PACKET_SIZE); // read the packet into the buffer
+
+  //the timestamp starts at byte 40 of the received packet and is four bytes,
+  // or two words, long. First, esxtract the two words:
+
+  unsigned long highWord = word(packetBuffer[40], packetBuffer[41]);
+  unsigned long lowWord = word(packetBuffer[42], packetBuffer[43]);
+  // combine the four bytes (two words) into a long integer
+  // this is NTP time (seconds since Jan 1 1900):
+  unsigned long secsSince1900 = highWord << 16 | lowWord;
+
+  // now convert NTP time into everyday time:
+  // Unix time starts on Jan 1 1970. In seconds, that's 2208988800:
+  const unsigned long seventyYears = 2208988800UL;
+  // subtract seventy years:
+  unsigned long epoch = secsSince1900 - seventyYears;
+  //set current time on device
+  setTime(epoch);
+  if (debugMode) {
+    Serial.println(F("[syncTimeViaNTP]Current time as UTC time updated."));
+    writeDebugMessageToInternalLog((String)"[syncTimeViaNTP]Current time as UTC time updated.");
+
+    // print the hour, minute and second:
+    Serial.print(F("[syncTimeViaNTP]The UTC time is "));       // UTC is the time at Greenwich Meridian (GMT)
+    Serial.print((epoch  % 86400L) / 3600); // print the hour (86400 equals secs per day)
+    Serial.print(':');
+    if (((epoch % 3600) / 60) < 10) {
+      // In the first 10 minutes of each hour, we'll want a leading '0'
+      Serial.print('0');
     }
-  
-    // set all bytes in the buffer to 0
-    memset(packetBuffer, 0, NTP_PACKET_SIZE);
-    // Initialize values needed to form request
-    // (see URL above for details on the packets)
-    packetBuffer[0] = 0b11100011;   // LI, Version, Mode
-    packetBuffer[1] = 0;     // Stratum, or type of clock
-    packetBuffer[2] = 6;     // Polling Interval
-    packetBuffer[3] = 0xEC;  // Peer Clock Precision
-    // 8 bytes of zero for Root Delay & Root Dispersion
-    packetBuffer[12]  = 49;
-    packetBuffer[13]  = 0x4E;
-    packetBuffer[14]  = 49;
-    packetBuffer[15]  = 52;
-
-    // all NTP fields have been given values, now
-    // you can send a packet requesting a timestamp:
-    udp.beginPacket(timeServerIP, 123); //NTP requests are to port 123
-    udp.write(packetBuffer, NTP_PACKET_SIZE);
-    udp.endPacket();
-
-    // wait for a sure reply or otherwise cancel time setting process
-    delay(1200);
-    int cb = udp.parsePacket();
-    if (!cb){
-       if (debugMode){
-        Serial.println((String)"[syncTimeViaNTP]Time setting failed. Received Packets="+cb);
-        writeDebugMessageToInternalLog((String)"[syncTimeViaNTP]Time setting failed. Received Packets="+cb);
-      }
-      return false;
+    Serial.print((epoch  % 3600) / 60); // print the minute (3600 equals secs per minute)
+    Serial.print(':');
+    if ((epoch % 60) < 10) {
+      // In the first 10 seconds of each minute, we'll want a leading '0'
+      Serial.print('0');
     }
+    Serial.println(epoch % 60); // print the second
+  }
 
-    if (debugMode>=1){
-      Serial.println((String)"[syncTimeViaNTP]packet received, length="+ cb);
-      writeDebugMessageToInternalLog((String)"[syncTimeViaNTP]packet received, length="+ cb);
-    }
-        
-    // We've received a packet, read the data from it
-    udp.read(packetBuffer, NTP_PACKET_SIZE); // read the packet into the buffer
-
-    //the timestamp starts at byte 40 of the received packet and is four bytes,
-    // or two words, long. First, esxtract the two words:
-
-    unsigned long highWord = word(packetBuffer[40], packetBuffer[41]);
-    unsigned long lowWord = word(packetBuffer[42], packetBuffer[43]);
-    // combine the four bytes (two words) into a long integer
-    // this is NTP time (seconds since Jan 1 1900):
-    unsigned long secsSince1900 = highWord << 16 | lowWord;
-    
-      // now convert NTP time into everyday time:
-      // Unix time starts on Jan 1 1970. In seconds, that's 2208988800:
-      const unsigned long seventyYears = 2208988800UL;
-      // subtract seventy years:
-      unsigned long epoch = secsSince1900 - seventyYears;
-      //set current time on device
-      setTime(epoch);
-      if (debugMode){
-        Serial.println("[syncTimeViaNTP]Current time as UTC time updated.");
-        writeDebugMessageToInternalLog((String)"[syncTimeViaNTP]Current time as UTC time updated.");
-
-        // print the hour, minute and second:
-        Serial.print("[syncTimeViaNTP]The UTC time is ");       // UTC is the time at Greenwich Meridian (GMT)
-        Serial.print((epoch  % 86400L) / 3600); // print the hour (86400 equals secs per day)
-        Serial.print(':');
-        if (((epoch % 3600) / 60) < 10) {
-          // In the first 10 minutes of each hour, we'll want a leading '0'
-          Serial.print('0');
-        }
-        Serial.print((epoch  % 3600) / 60); // print the minute (3600 equals secs per minute)
-        Serial.print(':');
-        if ((epoch % 60) < 10) {
-          // In the first 10 seconds of each minute, we'll want a leading '0'
-          Serial.print('0');
-        }
-        Serial.println(epoch % 60); // print the second
-      }
-    
-   udp.stop();
-   timeAdjusted = false; //mark current time as UTC time
-   return true;
+  udp.stop();
+  timeAdjusted = false; //mark current time as UTC time
+  return true;
 }
 
-static void handleWebUpdate(void){
-  
-  if(onBoardLED){
-    digitalWrite(LED_BUILTIN, LOW); //show connection via LED   
+static void handleWebUpdate(void) {
+
+  if (onBoardLED) {
+    digitalWrite(LED_BUILTIN, LOW); //show connection via LED
   }
 
   //preparation work
   char temp[650];
   snprintf(temp, 650,
-   "<html>\
+           "<html>\
     <head>\
       <title>LandXcape WebUpdate Site</title>\
       <style>\
@@ -1171,75 +1196,75 @@ static void handleWebUpdate(void){
          <form method='POST' action='/'><button type='submit'>Cancel</button></form>\
       </body>\
     </html>",
-     g_cssBody,hour(),minute(),second(),version
-     );
-          
-  //present website 
+           g_cssBody, hour(), minute(), second(), version
+          );
+
+  //present website
   wwwserver.send(200, "text/html", temp);
 
-    if (debugMode>=1){
-          Serial.println("[handleWebUpdate]WebUpdate site requested...");
-          writeDebugMessageToInternalLog((String)"[handleWebUpdate]WebUpdate site requested...");
-    }
+  if (debugMode >= 1) {
+    Serial.println("[handleWebUpdate]WebUpdate site requested...");
+    writeDebugMessageToInternalLog((String)"[handleWebUpdate]WebUpdate site requested...");
+  }
 
-    if(onBoardLED){
-      digitalWrite(LED_BUILTIN, HIGH); //show successful answer to request    
-    } 
+  if (onBoardLED) {
+    digitalWrite(LED_BUILTIN, HIGH); //show successful answer to request
+  }
 }
 
-static void handleUpdateViaBinary(void){
-  if(onBoardLED){
-    digitalWrite(LED_BUILTIN, LOW); //show connection via LED   
+static void handleUpdateViaBinary(void) {
+  if (onBoardLED) {
+    digitalWrite(LED_BUILTIN, LOW); //show connection via LED
   }
-  if (debugMode>=1){
-          Serial.println("[handleUpdateViaBinary]handleUpdateViaBinary function triggered...");
-          writeDebugMessageToInternalLog((String)"[handleUpdateViaBinary]handleUpdateViaBinary function triggered...");
+  if (debugMode >= 1) {
+    Serial.println("[handleUpdateViaBinary]handleUpdateViaBinary function triggered...");
+    writeDebugMessageToInternalLog((String)"[handleUpdateViaBinary]handleUpdateViaBinary function triggered...");
   }
 
   wwwserver.sendHeader("Connection", "close");
   wwwserver.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
-  
-  if (debugMode>=1){
-          Serial.println("[handleUpdateViaBinary]handleUpdateViaBinary function finished...");
-          writeDebugMessageToInternalLog((String)"[handleUpdateViaBinary]handleUpdateViaBinary function finished...");
+
+  if (debugMode >= 1) {
+    Serial.println("[handleUpdateViaBinary]handleUpdateViaBinary function finished...");
+    writeDebugMessageToInternalLog((String)"[handleUpdateViaBinary]handleUpdateViaBinary function finished...");
   }
 
   //unmount filesystem before rebooting
   SPIFFS.end();
   delay(200); //wait 200ms to ensure that the Filesystem has been unmounted
-  
-  if(onBoardLED){
-    digitalWrite(LED_BUILTIN, HIGH); //show successful answer to request    
+
+  if (onBoardLED) {
+    digitalWrite(LED_BUILTIN, HIGH); //show successful answer to request
   }
   ESP.restart();
 }
 
-static void handleWebUpdateHelperFunction (void){
-  if(onBoardLED){
-    digitalWrite(LED_BUILTIN, LOW); //show connection via LED   
-  } 
+static void handleWebUpdateHelperFunction (void) {
+  if (onBoardLED) {
+    digitalWrite(LED_BUILTIN, LOW); //show connection via LED
+  }
 
   HTTPUpload& upload = wwwserver.upload();
-      if (upload.status == UPLOAD_FILE_START) {
-        Serial.setDebugOutput(true);
-        WiFiUDP::stopAll();
-        Serial.printf("Update: %s\n", upload.filename.c_str());
-        uint32_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
-        if (!Update.begin(maxSketchSpace)) { //start with max available size
-          Update.printError(Serial);
-        }
-      } else if (upload.status == UPLOAD_FILE_WRITE) {
-        if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
-          Update.printError(Serial);
-        }
-      } else if (upload.status == UPLOAD_FILE_END) {
-        if (Update.end(true)) { //true to set the size to the current progress
-          Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
+  if (upload.status == UPLOAD_FILE_START) {
+    Serial.setDebugOutput(true);
+    WiFiUDP::stopAll();
+    Serial.printf("Update: %s\n", upload.filename.c_str());
+    uint32_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+    if (!Update.begin(maxSketchSpace)) { //start with max available size
+      Update.printError(Serial);
+    }
+  } else if (upload.status == UPLOAD_FILE_WRITE) {
+    if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+      Update.printError(Serial);
+    }
+  } else if (upload.status == UPLOAD_FILE_END) {
+    if (Update.end(true)) { //true to set the size to the current progress
+      Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
 
       //send the user back to the main page
-        char temp[500];
-        snprintf(temp, 500,
-         "<html>\
+      char temp[500];
+      snprintf(temp, 500,
+               "<html>\
           <head>\
             <title>LandXcape</title>\
             <style>\
@@ -1253,54 +1278,56 @@ static void handleWebUpdateHelperFunction (void){
               <p>Update erfolgreich um: %02d:%02d:%02d</p>\
             </body>\
           </html>",
-          g_cssBody, hour(),minute(),second()
-          );
+               g_cssBody, hour(), minute(), second()
+              );
       wwwserver.send(200, "text/html", temp);
-          
-        } else {
-          Update.printError(Serial);
-        }
-        Serial.setDebugOutput(false);
-      }
 
-    if(onBoardLED){
-      digitalWrite(LED_BUILTIN, HIGH); //show successful answer to request    
+    } else {
+      Update.printError(Serial);
     }
+    Serial.setDebugOutput(false);
+  }
+
+  if (onBoardLED) {
+    digitalWrite(LED_BUILTIN, HIGH); //show successful answer to request
+  }
 }
 
 /**
  * batterVoltageHistory helper function to store battery values (max 400 entries <->maxBatHistValues)
  */
 
-static void storeBatVoltHistory (double actualBatVolt){
+static void storeBatVoltHistory (double actualBatVolt) {
 
-  if (batVoltHistCounter<maxBatHistValues){
+#ifndef TEST_DATA
+  if (batVoltHistCounter < maxBatHistValues) {
     batterVoltageHistory[batVoltHistCounter] = actualBatVolt;
-  }else{
-    batVoltHistCounter=0; //loopstorage / ringbuffer
+  } else {
+    batVoltHistCounter = 0; //loopstorage / ringbuffer
     batterVoltageHistory[batVoltHistCounter] = actualBatVolt;
   }
-  
+
   batVoltHistCounter++;
+#endif
 }
 
 /**
- * drawGraphBasedOnBatValues as a SVG Graphics 
+ * drawGraphBasedOnBatValues as a SVG Graphics
  * SVG is computed only once every minute and stored as a String for presentation
  */
 void drawGraphBasedOnBatValues(void) {
 
-  if (debugMode>=2){
-          Serial.println("[drawGraphBasedOnBatValues]drawGraphBasedOnBatValues has been triggered...");
-          writeDebugMessageToInternalLog((String)"[drawGraphBasedOnBatValues]drawGraphBasedOnBatValues has been triggered...");
+  if (debugMode >= 2) {
+    Serial.println(F("[drawGraphBasedOnBatValues]drawGraphBasedOnBatValues has been triggered..."));
+    writeDebugMessageToInternalLog((String)"[drawGraphBasedOnBatValues]drawGraphBasedOnBatValues has been triggered...");
   }
-  File batGraphFile = SPIFFS.open(batGraph,"r");
-  if(!batGraphFile){ //check if we have been able to open/create the file, if not abort
-      if (debugMode>=1){
-          Serial.println("[drawGraphBasedOnBatValues]batGraph.svg file opening failed. Aborting...");
-          writeDebugMessageToInternalLog((String)"[drawGraphBasedOnBatValues]batGraph.svg file opening failed. Aborting...");
-      }
-      return;   
+  File batGraphFile = SPIFFS.open(batGraph, "r");
+  if (!batGraphFile) { //check if we have been able to open/create the file, if not abort
+    if (debugMode >= 1) {
+      Serial.println(F("[drawGraphBasedOnBatValues]batGraph.svg file opening failed. Aborting..."));
+      writeDebugMessageToInternalLog((String)"[drawGraphBasedOnBatValues]batGraph.svg file opening failed. Aborting...");
+    }
+    return;
   }
 
   //stream the file :D
@@ -1315,68 +1342,68 @@ void drawGraphBasedOnBatValues(void) {
  */
 void computeGraphBasedOnBatValues(void) {
 
-  if (debugMode>=2){
-          Serial.println("[computeGraphBasedOnBatValues]computeGraphBasedOnBatValues has been triggered...");
-          writeDebugMessageToInternalLog((String)"[computeGraphBasedOnBatValues]computeGraphBasedOnBatValues has been triggered...");
+  if (debugMode >= 2) {
+    Serial.println(F("[computeGraphBasedOnBatValues]computeGraphBasedOnBatValues has been triggered..."));
+    writeDebugMessageToInternalLog((String)"[computeGraphBasedOnBatValues]computeGraphBasedOnBatValues has been triggered...");
   }
 
   //open file at FileSystem
-  File batGraphFile = SPIFFS.open(batGraph,"w");
-  if(!batGraphFile){ //check if we have been able to open/create the file, if not abort
-      if (debugMode>=1){
-          Serial.println("[computeGraphBasedOnBatValues]batGraph.svg file creation failed. Aborting...");
-          writeDebugMessageToInternalLog((String)"[computeGraphBasedOnBatValues]batGraph.svg file creation failed. Aborting...");
-      }
-      return;   
+  File batGraphFile = SPIFFS.open(batGraph, "w");
+  if (!batGraphFile) { //check if we have been able to open/create the file, if not abort
+    if (debugMode >= 1) {
+      Serial.println(F("[computeGraphBasedOnBatValues]batGraph.svg file creation failed. Aborting..."));
+      writeDebugMessageToInternalLog((String)"[computeGraphBasedOnBatValues]batGraph.svg file creation failed. Aborting...");
+    }
+    return;
   }
 
   char temp[100];
   char svgBatHistGraph[230];
   snprintf(svgBatHistGraph, 230,
-    "<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" width=\"400\" height=\"155\">\
-    <rect width=\"400\" height=\"155\" fill=\"rgb(250, 230, 210)\" stroke-width=\"1\" stroke=\"rgb(0, 0, 0)\" />\
-    <g stroke=\"black\">");
+           "<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" width=\"%d\" height=\"155\">\
+    <rect width=\"%d\" height=\"155\" fill=\"rgb(250, 230, 210)\" stroke-width=\"1\" stroke=\"rgb(0, 0, 0)\" />\
+    <g stroke=\"black\">", maxBatHistValues, maxBatHistValues);
 
   //write initial part of the SVG
   batGraphFile.println(svgBatHistGraph);
 
-  int counter = batVoltHistCounter%maxBatHistValues;
-  
+  int counter = batVoltHistCounter % maxBatHistValues;
+
   //compute amplifier
   //highestBatVoltage - lowestBatVoltage = z -> modifcation number for the amplifier
-  double z=highestBatVoltage-lowestBatVoltage;
-  
-  if (z<=0.01){ //to prevent a division by zero after powering up with no changes to the battery
-    z=5;  //lowest Bat value ~ 16V max 21V -> 5V span between max and min bat voltage
-  }
-  double amplifier = 150/z;
+  double z = highestBatVoltage - lowestBatVoltage;
 
-  int y = (batterVoltageHistory[counter]-lowestBatVoltage)*amplifier;
+  if (z <= 0.01) { //to prevent a division by zero after powering up with no changes to the battery
+    z = 5; //lowest Bat value ~ 16V max 21V -> 5V span between max and min bat voltage
+  }
+  double amplifier = 150 / z;
+
+  int y = (batterVoltageHistory[counter] - lowestBatVoltage) * amplifier;
 
   //compute dot width based on configured lastXXminBatHist (initial 100min)
-  double dotWidth = (double)maxBatHistValues/(double)lastXXminBatHist; //take care of the .xx part after the casting
+  double dotWidth = (double)maxBatHistValues / (double)lastXXminBatHist; //take care of the .xx part after the casting
 
   //and adapt counter to show only the selected amount of values
-  if (lastXXminBatHist!=maxBatHistValues) { // if max size (400pix) != gewählte minuten Anzahl
-    counter = (counter+(maxBatHistValues-lastXXminBatHist))%maxBatHistValues;
+  if (lastXXminBatHist != maxBatHistValues) { // if max size (maxBatHistValues pixel) != gewählte minuten Anzahl
+    counter = (counter + (maxBatHistValues - lastXXminBatHist)) % maxBatHistValues;
   }
 
-  for (double x = 0; x < (double)maxBatHistValues; x=x+dotWidth) { 
-    
-    int y2 = (batterVoltageHistory[counter%maxBatHistValues]-lowestBatVoltage)*amplifier;
-    
-    sprintf(temp, "<line x1=\"%d\" y1=\"%d\" x2=\"%d\" y2=\"%d\" stroke-width=\"1\" />\n", (int)x, 150-y, (int)(x + dotWidth), 150-y2);
+  for (double x = 0; x < (double)maxBatHistValues; x = x + dotWidth) {
+
+    int y2 = (batterVoltageHistory[counter % maxBatHistValues] - lowestBatVoltage) * amplifier;
+
+    sprintf(temp, "<line x1=\"%d\" y1=\"%d\" x2=\"%d\" y2=\"%d\" stroke-width=\"1\" />\n", (int)x, 150 - y, (int)(x + dotWidth), 150 - y2);
     batGraphFile.print(temp);
-    
+
     y = y2;
     counter++;
   }
-  
+
   batGraphFile.println("</g>\n</svg>");
   batGraphFile.close();
-  if (debugMode>=2){
-          Serial.println("[computeGraphBasedOnBatValues]computeGraphBasedOnBatValues has been finished and as file saved...");
-          writeDebugMessageToInternalLog("[computeGraphBasedOnBatValues]computeGraphBasedOnBatValues has been finished and as file saved...");
+  if (debugMode >= 2) {
+    Serial.println(F("[computeGraphBasedOnBatValues]computeGraphBasedOnBatValues has been finished and as file saved..."));
+    writeDebugMessageToInternalLog("[computeGraphBasedOnBatValues]computeGraphBasedOnBatValues has been finished and as file saved...");
   }
 }
 
@@ -1385,15 +1412,15 @@ void computeGraphBasedOnBatValues(void) {
  * Send User afterwards back to the root site of the webserver
  */
 
-void resetWemosBoard(void){
-  if (debugMode>=1){
-          Serial.println("[resetWemosBoard]Software reset triggered. Reseting...");
-          writeDebugMessageToInternalLog("[resetWemosBoard]Software reset triggered. Reseting...");
+void resetWemosBoard(void) {
+  if (debugMode >= 1) {
+    Serial.println(F("[resetWemosBoard]Software reset triggered. Reseting..."));
+    writeDebugMessageToInternalLog("[resetWemosBoard]Software reset triggered. Reseting...");
   }
 
   char temp[450];
   snprintf(temp, 450,
-   "<html>\
+           "<html>\
     <head>\
       <title>LandXcape</title>\
       <style>\
@@ -1407,8 +1434,8 @@ void resetWemosBoard(void){
         <p>Software reset triggered. Reseting... at Time: %02d:%02d:%02d</p>\
       </body>\
     </html>",
-    g_cssBody,hour(),minute(),second()
-    );
+           g_cssBody, hour(), minute(), second()
+          );
   wwwserver.send(200, "text/html", temp);
 
   //unmount filesystem before rebooting
@@ -1418,14 +1445,14 @@ void resetWemosBoard(void){
 }
 
 static void resetWiFiManager(void) {
-  if (debugMode>=1){
-    Serial.println("[resetWiFiManager]WiFi Manager reset triggered ...");
+  if (debugMode >= 1) {
+    Serial.println(F("[resetWiFiManager]WiFi Manager reset triggered ..."));
     writeDebugMessageToInternalLog("[resetWiFiManager]WiFi Manager reset triggered ...");
   }
 
-   char temp[450];
+  char temp[450];
   snprintf(temp, 450,
-   "<html>\
+           "<html>\
     <head>\
       <title>LandXcape</title>\
       <style>\
@@ -1438,8 +1465,8 @@ static void resetWiFiManager(void) {
         <p>WiFi credentials are reset at: %02d:%02d:%02d</p>\
       </body>\
     </html>",
-    g_cssBody,hour(),minute(),second()
-    );
+           g_cssBody, hour(), minute(), second()
+          );
   wwwserver.send(200, "text/html", temp);
 
   delay(200);// and to allow the webserver to send the site before resetting ;)
@@ -1452,39 +1479,39 @@ static void resetWiFiManager(void) {
  * Approximate sunrise and sunset based on UTC +1h for MESZ and according if summer time (DST) is valid or not
  */
 
-static void computeSunriseSunsetInformation(void){
+static void computeSunriseSunsetInformation(void) {
 
-  if (debugMode>=1){
-    Serial.println("[computeSunriseSunsetInformation]computeSunriseSunsetInformation function triggered...");
+  if (debugMode >= 1) {
+    Serial.println(F("[computeSunriseSunsetInformation]computeSunriseSunsetInformation function triggered..."));
     writeDebugMessageToInternalLog("[computeSunriseSunsetInformation]computeSunriseSunsetInformation function triggered...");
   }
 
-  SummerTimeActive = summertime_EU(year(),month(),day(),hour(),1);
+  SummerTimeActive = summertime_EU(year(), month(), day(), hour(), 1);
 
-  int day_ = (((month()-1)*30.5)+day());
+  int day_ = (((month() - 1) * 30.5) + day());
 
-  int average_sunrise = (earliest_sunrise+latest_sunrise)/2;
-  int diff_sunrise = (latest_sunrise-earliest_sunrise);
-  int average_sunset = (earliest_sunset+latest_sunset)/2;
-  int diff_sunset = (latest_sunset-earliest_sunset);
+  int average_sunrise = (earliest_sunrise + latest_sunrise) / 2;
+  int diff_sunrise = (latest_sunrise - earliest_sunrise);
+  int average_sunset = (earliest_sunset + latest_sunset) / 2;
+  int diff_sunset = (latest_sunset - earliest_sunset);
 
-  sunrise = (average_sunrise+(diff_sunrise/2)*cos((day_+8)/58.09));
-  sunset = (average_sunset-(diff_sunset/2)*cos((day_+8)/58.09));
+  sunrise = (average_sunrise + (diff_sunrise / 2) * cos((day_ + 8) / 58.09));
+  sunset = (average_sunset - (diff_sunset / 2) * cos((day_ + 8) / 58.09));
 
 
   //Sumertime-correction if necessary
-  if(SummerTimeActive==false){
-    sunrise=sunrise-60;//reduce 60min 
-    sunset=sunset-60;//reduce 60min 
+  if (SummerTimeActive == false) {
+    sunrise = sunrise - 60; //reduce 60min
+    sunset = sunset - 60; //reduce 60min
   }
 
-  if (debugMode>=1){
+  if (debugMode >= 1) {
     Serial.println((String)"[computeSunriseSunsetInformation]Summertime active:" + SummerTimeActive);
     writeDebugMessageToInternalLog((String)"[computeSunriseSunsetInformation]Summertime active:" + SummerTimeActive);
-    Serial.println((String)"[computeSunriseSunsetInformation]Sunrise for today:"+sunrise/60+"h " + sunrise%60 + "min");
-    writeDebugMessageToInternalLog((String)"[computeSunriseSunsetInformation]Sunrise for today:"+sunrise/60+"h " + sunrise%60 + "min");
-    Serial.println((String)"[computeSunriseSunsetInformation]Sunset for today:"+sunset/60+"h " + sunset%60 + "min");
-    writeDebugMessageToInternalLog((String)"[computeSunriseSunsetInformation]Sunset for today:"+sunset/60+"h " + sunset%60 + "min");
+    Serial.println((String)"[computeSunriseSunsetInformation]Sunrise for today:" + sunrise / 60 + "h " + sunrise % 60 + "min");
+    writeDebugMessageToInternalLog((String)"[computeSunriseSunsetInformation]Sunrise for today:" + sunrise / 60 + "h " + sunrise % 60 + "min");
+    Serial.println((String)"[computeSunriseSunsetInformation]Sunset for today:" + sunset / 60 + "h " + sunset % 60 + "min");
+    writeDebugMessageToInternalLog((String)"[computeSunriseSunsetInformation]Sunset for today:" + sunset / 60 + "h " + sunset % 60 + "min");
   }
 }
 
@@ -1496,28 +1523,28 @@ static void computeSunriseSunsetInformation(void){
  */
 boolean summertime_EU(int year, byte month, byte day, byte hour, byte tzHours)
 {
- if (month<3 || month>10) return false; // keine Sommerzeit in Jan, Feb, Nov, Dez
- if (month>3 && month<10) return true; // Sommerzeit in Apr, Mai, Jun, Jul, Aug, Sep
- if ((month==3 && (hour + 24 * day)>=(1 + tzHours + 24*(31 - (5 * year /4 + 4) % 7))) || (month==10 && (hour + 24 * day)<(1 + tzHours + 24*(31 - (5 * year /4 + 1) % 7))))
-   return true;
- else
-   return false;
+  if (month < 3 || month > 10) return false; // keine Sommerzeit in Jan, Feb, Nov, Dez
+  if (month > 3 && month < 10) return true; // Sommerzeit in Apr, Mai, Jun, Jul, Aug, Sep
+  if ((month == 3 && (hour + 24 * day) >= (1 + tzHours + 24 * (31 - (5 * year / 4 + 4) % 7))) || (month == 10 && (hour + 24 * day) < (1 + tzHours + 24 * (31 - (5 * year / 4 + 1) % 7))))
+    return true;
+  else
+    return false;
 }
 
 /**
  * doItOnceADay() - contains necesseray tasks to keep everything in sync
  */
- static void doItOnceADay(void){
-  if (debugMode>=1){
-    Serial.println((String)"[doItOnceADay]Summertime:"+SummerTimeActive);
-    writeDebugMessageToInternalLog((String)"[doItOnceADay]Summertime:"+SummerTimeActive);
+static void doItOnceADay(void) {
+  if (debugMode >= 1) {
+    Serial.println((String)"[doItOnceADay]Summertime:" + SummerTimeActive);
+    writeDebugMessageToInternalLog((String)"[doItOnceADay]Summertime:" + SummerTimeActive);
     Serial.println("[doItOnceADay]doItOnceADay has been triggered. Doing the daily work...");
     writeDebugMessageToInternalLog("[doItOnceADay]doItOnceADay has been triggered. Doing the daily work...");
   }
   NTPUpdateSuccessful = syncTimeViaNTP(); //resync time from the NTP just to ensure correctness
   changeUTCtoLocalTime();//change time to local time
   computeSunriseSunsetInformation(); //compute the new sunrise and sunset for today
- }
+}
 
 /**
  * checkBatValues if we are charging or within the charging station
@@ -1526,134 +1553,134 @@ boolean summertime_EU(int year, byte month, byte day, byte hour, byte tzHours)
  *  * "§$% shit -> really -> https://stackoverflow.com/questions/11720656/modulo-operation-with-negative-numbers/42131603 gcc has a bad behavior of doing 'negative' modulos... argh -> google shows me differently ... aigh
  */
 
-static void checkBatValues(void){
+static void checkBatValues(void) {
 
-  if (debugMode>=2){
-    Serial.println("[checkBatValues]check Bat Values triggered");
+  if (debugMode >= 2) {
+    Serial.println(F("[checkBatValues]check Bat Values triggered"));
     writeDebugMessageToInternalLog("[checkBatValues]check Bat Values triggered");
-    Serial.println((String)"[checkBatValues]earlyGoHomeVolt:"+earlyGoHomeVolt+" batteryVoltage"+batteryVoltage + " at Local time:"+hour()+":"+minute()+":"+second()+" " + year());
-    writeDebugMessageToInternalLog((String)"[checkBatValues]earlyGoHomeVolt:"+earlyGoHomeVolt+" batteryVoltage"+batteryVoltage + " at local time:"+hour()+":"+minute()+":"+second()+" " + year());
+    Serial.println((String)"[checkBatValues]earlyGoHomeVolt:" + earlyGoHomeVolt + " batteryVoltage" + batteryVoltage + " at Local time:" + hour() + ":" + minute() + ":" + second() + " " + year());
+    writeDebugMessageToInternalLog((String)"[checkBatValues]earlyGoHomeVolt:" + earlyGoHomeVolt + " batteryVoltage" + batteryVoltage + " at local time:" + hour() + ":" + minute() + ":" + second() + " " + year());
   }
-    if (earlyGoHomeVolt>=batteryVoltage){
-      robiOnTheWayHome = true;
-      return;
-    }
-    //compare current battery volt value against value 3minutes and then if positive 5 minutes ago to exclude high value during driving downwards or on even ground when before climbing has occured
-    //to prevent gcc behavior as described above... sigh
-    int batVoltHistCounter_tmp3=batVoltHistCounter-3;
-    int batVoltHistCounter_tmp6=batVoltHistCounter-6;
-    
-    if (batVoltHistCounter_tmp3<=-1){
-      batVoltHistCounter_tmp3=maxBatHistValues-batVoltHistCounter-4; //-4=-3-1 since an array with 400 entries goes from 0 to 399... 
-    }
- 
-    if (batteryVoltage>batterVoltageHistory[batVoltHistCounter_tmp3]){
-          if (batVoltHistCounter_tmp6<=-1){
-            batVoltHistCounter_tmp6=maxBatHistValues-batVoltHistCounter-7;//-7=-6-1 since an array with 400 entries goes from 0 to 399... 
-          }
-      if (batterVoltageHistory[batVoltHistCounter_tmp3]>batterVoltageHistory[batVoltHistCounter_tmp6]){
-               
-        if (debugMode>=1 && hasCharged == false){ //write default charging information only once
-          Serial.println((String)"[checkBatValues]Charging startet at local time:"+hour()+":"+(minute()-6)+":"+second()+" " + year());
-          writeDebugMessageToInternalLog((String)"[checkBatValues]Charging startet at local time:"+hour()+":"+(minute()-6)+":"+second()+" " + year());
-          Serial.println((String)"[checkBatValues]with values: Battery"+batteryVoltage+" > "+batterVoltageHistory[batVoltHistCounter_tmp3] + " Battery Voltage History 3min ago > " +batterVoltageHistory[batVoltHistCounter_tmp6] + "Battery Voltage History 5min ago");
-          writeDebugMessageToInternalLog((String)"[checkBatValues]with values: Battery"+batteryVoltage+" > "+batterVoltageHistory[batVoltHistCounter_tmp3] + " Battery Voltage History 3min ago > " +batterVoltageHistory[batVoltHistCounter_tmp6] + "Battery Voltage History 5min ago");
-        }else{
-          if (debugMode>=2){ //write default charging information only once
-          Serial.println((String)"[checkBatValues]Charging startet at local time:"+hour()+":"+(minute()-6)+":"+second()+" " + year());
-          writeDebugMessageToInternalLog((String)"[checkBatValues]Charging startet at local time:"+hour()+":"+(minute()-6)+":"+second()+" " + year());
-          Serial.println((String)"[checkBatValues]with values: Battery"+batteryVoltage+" > "+batterVoltageHistory[batVoltHistCounter_tmp3] + " Battery Voltage History 3min ago > " +batterVoltageHistory[batVoltHistCounter_tmp6] + "Battery Voltage History 5min ago");
-          writeDebugMessageToInternalLog((String)"[checkBatValues]with values: Battery"+batteryVoltage+" > "+batterVoltageHistory[batVoltHistCounter_tmp3] + " Battery Voltage History 3min ago > " +batterVoltageHistory[batVoltHistCounter_tmp6] + "Battery Voltage History 5min ago");
-        }
-        }
+  if (earlyGoHomeVolt >= batteryVoltage) {
+    robiOnTheWayHome = true;
+    return;
+  }
+  //compare current battery volt value against value 3minutes and then if positive 5 minutes ago to exclude high value during driving downwards or on even ground when before climbing has occured
+  //to prevent gcc behavior as described above... sigh
+  int batVoltHistCounter_tmp3 = batVoltHistCounter - 3;
+  int batVoltHistCounter_tmp6 = batVoltHistCounter - 6;
 
-        isCharging = true;
-        hasCharged = true;
-        robiAtHome = true;
-        robiOnTheWayHome = false;
-        hasChargedDelay = 6; //wait at least 6 min before switching the "isCharging" status
-        
-        return;
-      }else{
-        hasChargedDelay--;
-        if(hasChargedDelay<=0){
-          isCharging = false; //we are consuming energy so we are not charging any more
+  if (batVoltHistCounter_tmp3 <= -1) {
+    batVoltHistCounter_tmp3 = maxBatHistValues - batVoltHistCounter - 4; //-4=-3-1 since an array with 400 entries goes from 0 to 399...
+  }
+
+  if (batteryVoltage > batterVoltageHistory[batVoltHistCounter_tmp3]) {
+    if (batVoltHistCounter_tmp6 <= -1) {
+      batVoltHistCounter_tmp6 = maxBatHistValues - batVoltHistCounter - 7; //-7=-6-1 since an array with 400 entries goes from 0 to 399...
+    }
+    if (batterVoltageHistory[batVoltHistCounter_tmp3] > batterVoltageHistory[batVoltHistCounter_tmp6]) {
+
+      if (debugMode >= 1 && hasCharged == false) { //write default charging information only once
+        Serial.println((String)"[checkBatValues]Charging startet at local time:" + hour() + ":" + (minute() - 6) + ":" + second() + " " + year());
+        writeDebugMessageToInternalLog((String)"[checkBatValues]Charging startet at local time:" + hour() + ":" + (minute() - 6) + ":" + second() + " " + year());
+        Serial.println((String)"[checkBatValues]with values: Battery" + batteryVoltage + " > " + batterVoltageHistory[batVoltHistCounter_tmp3] + " Battery Voltage History 3min ago > " + batterVoltageHistory[batVoltHistCounter_tmp6] + "Battery Voltage History 5min ago");
+        writeDebugMessageToInternalLog((String)"[checkBatValues]with values: Battery" + batteryVoltage + " > " + batterVoltageHistory[batVoltHistCounter_tmp3] + " Battery Voltage History 3min ago > " + batterVoltageHistory[batVoltHistCounter_tmp6] + "Battery Voltage History 5min ago");
+      } else {
+        if (debugMode >= 2) { //write default charging information only once
+          Serial.println((String)"[checkBatValues]Charging startet at local time:" + hour() + ":" + (minute() - 6) + ":" + second() + " " + year());
+          writeDebugMessageToInternalLog((String)"[checkBatValues]Charging startet at local time:" + hour() + ":" + (minute() - 6) + ":" + second() + " " + year());
+          Serial.println((String)"[checkBatValues]with values: Battery" + batteryVoltage + " > " + batterVoltageHistory[batVoltHistCounter_tmp3] + " Battery Voltage History 3min ago > " + batterVoltageHistory[batVoltHistCounter_tmp6] + "Battery Voltage History 5min ago");
+          writeDebugMessageToInternalLog((String)"[checkBatValues]with values: Battery" + batteryVoltage + " > " + batterVoltageHistory[batVoltHistCounter_tmp3] + " Battery Voltage History 3min ago > " + batterVoltageHistory[batVoltHistCounter_tmp6] + "Battery Voltage History 5min ago");
         }
       }
-    }else{
-       hasChargedDelay--;
-        if(hasChargedDelay<=0){
-          isCharging = false; //we are consuming energy so we are not charging any more
-        }
+
+      isCharging = true;
+      hasCharged = true;
+      robiAtHome = true;
+      robiOnTheWayHome = false;
+      hasChargedDelay = 6; //wait at least 6 min before switching the "isCharging" status
+
+      return;
+    } else {
+      hasChargedDelay--;
+      if (hasChargedDelay <= 0) {
+        isCharging = false; //we are consuming energy so we are not charging any more
+      }
     }
+  } else {
+    hasChargedDelay--;
+    if (hasChargedDelay <= 0) {
+      isCharging = false; //we are consuming energy so we are not charging any more
+    }
+  }
 }
 
 /**
  * changeUTCtoLocalTime as default time incl. DST / summer time adjusment
  */
-static void changeUTCtoLocalTime(void){
+static void changeUTCtoLocalTime(void) {
 
-      if(timeAdjusted == true || NTPUpdateSuccessful == false ){ //Time has been already adjusted or if the NTP Update is still ongoing
-  
-        if (debugMode>=1){
-          Serial.println((String)"[changeUTCtoLocalTime]Time has been already adjusted or if the NTP Update is still ongoing at local time:"+hour()+":"+(minute()-5)+":"+second()+" " + year());
-          writeDebugMessageToInternalLog((String)"[changeUTCtoLocalTime]Time has been already adjusted or if the NTP Update is still ongoing at local time:"+hour()+":"+(minute()-5)+":"+second()+" " + year());
-        }
-          
-        return;
-      }
+  if (timeAdjusted == true || NTPUpdateSuccessful == false ) { //Time has been already adjusted or if the NTP Update is still ongoing
 
-      if (debugMode>=1){
-        Serial.println((String)"[changeUTCtoLocalTime]changeUTCtoLocalTime called at current UTC Time:"+hour()+":"+(minute()-5)+":"+second()+" " + year());
-        writeDebugMessageToInternalLog((String)"[changeUTCtoLocalTime]changeUTCtoLocalTime called at current UTC Time:"+hour()+":"+(minute()-5)+":"+second()+" " + year());
-      }
+    if (debugMode >= 1) {
+      Serial.println((String)"[changeUTCtoLocalTime]Time has been already adjusted or if the NTP Update is still ongoing at local time:" + hour() + ":" + (minute() - 5) + ":" + second() + " " + year());
+      writeDebugMessageToInternalLog((String)"[changeUTCtoLocalTime]Time has been already adjusted or if the NTP Update is still ongoing at local time:" + hour() + ":" + (minute() - 5) + ":" + second() + " " + year());
+    }
 
-      int timeChange = 0;
+    return;
+  }
 
-      if (SummerTimeActive==true){
-        timeChange=timeChange+60*60; //1hour ahead so 60min x 60 seconds
-      }
-      if (UTCtimezone>=1){
-        for (int i=0;UTCtimezone>i;i++){
-          timeChange=timeChange+60*60; //add seconds for each hour ahead of UTC
-        }
-      }
-      if (UTCtimezone<=0){
-        for (int i=0;UTCtimezone<=i;i--){
-          timeChange=timeChange-60*60; //subtract seconds for each hour behind UTC
-        }
-      }
-      if (debugMode>=1){
-        Serial.println((String)"[changeUTCtoLocalTime]Time will be adjusted by:"+timeChange);
-        writeDebugMessageToInternalLog((String)"[changeUTCtoLocalTime]Time will be adjusted by:"+timeChange);
-      }
-      adjustTime(timeChange);
-      timeAdjusted = true;
+  if (debugMode >= 1) {
+    Serial.println((String)"[changeUTCtoLocalTime]changeUTCtoLocalTime called at current UTC Time:" + hour() + ":" + (minute() - 5) + ":" + second() + " " + year());
+    writeDebugMessageToInternalLog((String)"[changeUTCtoLocalTime]changeUTCtoLocalTime called at current UTC Time:" + hour() + ":" + (minute() - 5) + ":" + second() + " " + year());
+  }
+
+  int timeChange = 0;
+
+  if (SummerTimeActive == true) {
+    timeChange = timeChange + 60 * 60; //1hour ahead so 60min x 60 seconds
+  }
+  if (UTCtimezone >= 1) {
+    for (int i = 0; UTCtimezone > i; i++) {
+      timeChange = timeChange + 60 * 60; //add seconds for each hour ahead of UTC
+    }
+  }
+  if (UTCtimezone <= 0) {
+    for (int i = 0; UTCtimezone <= i; i--) {
+      timeChange = timeChange - 60 * 60; //subtract seconds for each hour behind UTC
+    }
+  }
+  if (debugMode >= 1) {
+    Serial.println((String)"[changeUTCtoLocalTime]Time will be adjusted by:" + timeChange);
+    writeDebugMessageToInternalLog((String)"[changeUTCtoLocalTime]Time will be adjusted by:" + timeChange);
+  }
+  adjustTime(timeChange);
+  timeAdjusted = true;
 }
 
 /**
  * writeDebugMessageToInternalLog - stores the last debug messages in an internal storage
- */ 
- static void writeDebugMessageToInternalLog(String tmp){
+ */
+static void writeDebugMessageToInternalLog(String tmp) {
 
-  if (logRotateCounter<=0){
-    logRotateCounter=maxLogEntries-1; // 0 to 399 = 400 entries for example
+  if (logRotateCounter <= 0) {
+    logRotateCounter = maxLogEntries - 1; // 0 to 399 = 400 entries for example
   }
 
   char temp[maxLogLength];
-  tmp.toCharArray(temp,maxLogLength);
-  
-  snprintf(logRotateBuffer[logRotateCounter],maxLogLength,temp);
-  
-  logRotateCounter=(logRotateCounter-1);
- }
+  tmp.toCharArray(temp, maxLogLength);
 
- /**
-  * presentLogEntriesFromInternalLog - shows the last stored log entries via a website for remote debugging from RAM
-  */
-static void presentLogEntriesFromInternalLog(void){
+  snprintf(logRotateBuffer[logRotateCounter], maxLogLength, temp);
 
-  int counter = ((logRotateCounter+1)%maxLogEntries); //to get the latest entry
+  logRotateCounter = (logRotateCounter - 1);
+}
+
+/**
+ * presentLogEntriesFromInternalLog - shows the last stored log entries via a website for remote debugging from RAM
+ */
+static void presentLogEntriesFromInternalLog(void) {
+
+  int counter = ((logRotateCounter + 1) % maxLogEntries); //to get the latest entry
 
   String tmp = "<html>\
     <head>\
@@ -1673,77 +1700,77 @@ static void presentLogEntriesFromInternalLog(void){
           </tr>\
         </table>\
        <br>";
-                   
-      for (int i=0;i<maxLogEntries;i++){
-        tmp = tmp + logRotateBuffer[counter] + "<br>";
-        counter = (counter+1)%maxLogEntries;
-      }
-                    
-      tmp += "</body></html>";
-      
+
+  for (int i = 0; i < maxLogEntries; i++) {
+    tmp = tmp + logRotateBuffer[counter] + "<br>";
+    counter = (counter + 1) % maxLogEntries;
+  }
+
+  tmp += "</body></html>";
+
   wwwserver.send(200, "text/html", tmp);
-  
-  if (debugMode>=2){
-          Serial.println((String)"[presentLogEntriesFromInternalLog]presentLogEntries called and executed.");
-          writeDebugMessageToInternalLog((String)"[presentLogEntriesFromInternalLog]presentLogEntries called and executed.");
+
+  if (debugMode >= 2) {
+    Serial.println((String)"[presentLogEntriesFromInternalLog]presentLogEntries called and executed.");
+    writeDebugMessageToInternalLog((String)"[presentLogEntriesFromInternalLog]presentLogEntries called and executed.");
   }
 }
 
 /**
- * reportRainToLandXCape - since the rain sensor is no longer directly connected we use a relay to shortcut the sensor cables to allow the LandXCape mainboard to detect the rain or at least it things it rains 
+ * reportRainToLandXCape - since the rain sensor is no longer directly connected we use a relay to shortcut the sensor cables to allow the LandXCape mainboard to detect the rain or at least it things it rains
  * Currently not used, but will be used as an Option within the Admin optionsThanks
  */
 
-static void reportRainToLandXCape (void){
+static void reportRainToLandXCape (void) {
 
-  if (debugMode>=1){
-          Serial.println((String)"[reportRainToLandXCape]Rain sensor will be triggered to report the LandXcape mainboard that it rains or at least it thinks so.");
-          writeDebugMessageToInternalLog((String)"[reportRainToLandXCape]Rain sensor will be triggered to report the LandXcape mainboard that it rains or at least it thinks so.");
+  if (debugMode >= 1) {
+    Serial.println((String)"[reportRainToLandXCape]Rain sensor will be triggered to report the LandXcape mainboard that it rains or at least it thinks so.");
+    writeDebugMessageToInternalLog((String)"[reportRainToLandXCape]Rain sensor will be triggered to report the LandXcape mainboard that it rains or at least it thinks so.");
   }
-  digitalWrite(REGENSENSOR_LXC,LOW);
+  digitalWrite(REGENSENSOR_LXC, LOW);
   delay(rainSensorShortcutTime);
-  digitalWrite(REGENSENSOR_LXC,HIGH);
+  digitalWrite(REGENSENSOR_LXC, HIGH);
 }
 
 /**
- * getRainSensorStatus returns true if at least 3 of 5 values indicate rain 
+ * getRainSensorStatus returns true if at least 3 of 5 values indicate rain
  * ofterwise false
  */
 
-static boolean getRainSensorStatus(void){
+static boolean getRainSensorStatus(void) {
 
-  if (debugMode>=2){
-          Serial.println((String)"[getRainSensorStatus]Analysis of the last 10 sensor values has been triggered...");
-          writeDebugMessageToInternalLog((String)"[getRainSensorStatus]Analysis of the last 10 sensor values has been triggered...");
+  if (debugMode >= 2) {
+    Serial.println((String)"[getRainSensorStatus]Analysis of the last 10 sensor values has been triggered...");
+    writeDebugMessageToInternalLog((String)"[getRainSensorStatus]Analysis of the last 10 sensor values has been triggered...");
   }
 
-  if(ignoreRain==true){
-    if (debugMode>=2){
-          Serial.println((String)"[getRainSensorStatus]rain detection ignored as wished/selected via Admin site...");
-          writeDebugMessageToInternalLog((String)"[getRainSensorStatus]rain detection ignored as wished/selected via Admin site...");
+  if (ignoreRain == true) {
+    if (debugMode >= 2) {
+      Serial.println((String)"[getRainSensorStatus]rain detection ignored as wished/selected via Admin site...");
+      writeDebugMessageToInternalLog((String)"[getRainSensorStatus]rain detection ignored as wished/selected via Admin site...");
     }
     return false;
   }
 
   int amountOfPositiveRainValues = 0;
 
-  for(int i=0;i<10;i++){
-    amountOfPositiveRainValues= amountOfPositiveRainValues + rainSensorResults[i];
+  for (int i = 0; i < 10; i++) {
+    amountOfPositiveRainValues = amountOfPositiveRainValues + rainSensorResults[i];
   }
 
-  if (amountOfPositiveRainValues<=1){
-    if (debugMode>=2){
-            Serial.println((String)"[getRainSensorStatus]Result: It Rains - "+amountOfPositiveRainValues);
-            writeDebugMessageToInternalLog((String)"[getRainSensorStatus]Result: It Rains - "+amountOfPositiveRainValues);
+  if (amountOfPositiveRainValues <= 1) {
+    if (debugMode >= 2) {
+      Serial.println((String)"[getRainSensorStatus]Result: It Rains - " + amountOfPositiveRainValues);
+      writeDebugMessageToInternalLog((String)"[getRainSensorStatus]Result: It Rains - " + amountOfPositiveRainValues);
     }
-      return true;
-  }else{
-    if (debugMode>=2){
-            Serial.println((String)"[getRainSensorStatus]Result: It does not rain - "+amountOfPositiveRainValues);
-            writeDebugMessageToInternalLog((String)"[getRainSensorStatus]Result: It does not rain - "+amountOfPositiveRainValues);
+    return true;
+  } else {
+    if (debugMode >= 2) {
+      Serial.println((String)"[getRainSensorStatus]Result: It does not rain - " + amountOfPositiveRainValues);
+      writeDebugMessageToInternalLog((String)"[getRainSensorStatus]Result: It does not rain - " + amountOfPositiveRainValues);
     }
-      return false;
-    }
+    return false;
+  }
 }
 
 /**
@@ -1752,10 +1779,8 @@ static boolean getRainSensorStatus(void){
  *
 */
 
- static boolean formatFS (void){
-
+static boolean formatFS (void) {
   SPIFFS.format();
-
   //Restart the WEMOS-FileSystem to ensure a clean start of the file system - a direct restart of the Wemos at this point should work as well
   SPIFFS.end();
   //initialize filesystem
@@ -1763,13 +1788,12 @@ static boolean getRainSensorStatus(void){
   filesystem_cfg.setAutoFormat(false);
   SPIFFS.setConfig(filesystem_cfg);
   SPIFFS.begin(); //Restart the WEMOS to ensure a clean start of the file system - a direct restart at this point should work as well
-
   return true;
- }
+}
 
- /**
- * writeWebServerFiles - to save RAM all sites will be written during the setup mode to the flash memory and furthermore only streamed to clients without using the RAM
- */
+/**
+* writeWebServerFiles - to save RAM all sites will be written during the setup mode to the flash memory and furthermore only streamed to clients without using the RAM
+*/
 
 // static void writeWebServerFiles(const char* file_, char * content , int length ){
 //  if (debugMode>=2){
@@ -1779,13 +1803,13 @@ static boolean getRainSensorStatus(void){
 //
 //  //open file at FileSystem
 //  File file = SPIFFS.open(file_,"w");
-//  
+//
 //  if(!file){ //check if we have been able to open/create the file, if not abort
 //      if (debugMode>=1){
 //          Serial.println((String)"[writeWebServerFiles]"+ file_ +" file creation failed. Aborting...");
 //          writeDebugMessageToInternalLog((String)"[writeWebServerFiles]"+ file_ +" file creation failed. Aborting...");
 //      }
-//      return;   
+//      return;
 //  }
 //  //writing content to file
 //  file.write(content,length);
